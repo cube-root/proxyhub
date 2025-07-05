@@ -11,4 +11,13 @@ declare global {
         id: String,
         socket: Socket
     }
+
+    interface TunnelMapping {
+        stableTunnelId: string;
+        socketId: string;
+        socket: Socket;
+        port: number;
+        createdAt: Date;
+        lastActivity: Date;
+    }
 }

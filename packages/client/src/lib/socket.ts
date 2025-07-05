@@ -33,7 +33,29 @@ const displayTunnelInfo = (data: any) => {
     console.log();
 };
 
+/**
+ * Generate a stable tunnel ID that persists across reconnections
+ * This ID is based on the user's machine and port to ensure consistency
+ */
+const generateStableTunnelId = (port: number): string => {
+    // Create a consistent ID based on machine info and port
+    const machineInfo = process.env.USER || process.env.USERNAME || 'unknown';
+    const portStr = port.toString();
+    const processId = process.pid.toString();
+    
+    // Create a deterministic hash that's unique for this process and port
+    const hash = crypto.createHash('md5')
+        .update(`${machineInfo}-${portStr}-${processId}`)
+        .digest('hex')
+        .substring(0, 12); // Take first 12 characters
+    
+    return hash;
+};
+
 const socketHandler = (option: ClientInitializationOptions) => {
+    // Generate a stable tunnel ID for this session
+    const stableTunnelId = generateStableTunnelId(option.port);
+    
     // Determine the socket URL from environment or use default
     let socketUrl = (
         process?.env?.SOCKET_URL ?? "https://connect.proxyhub.cloud"
@@ -65,6 +87,7 @@ const socketHandler = (option: ClientInitializationOptions) => {
         rememberUpgrade: false,
         auth: {
             clientSecret,
+            stableTunnelId, // Send stable tunnel ID to server
         },
     });
 
@@ -72,9 +95,18 @@ const socketHandler = (option: ClientInitializationOptions) => {
     socket.on("connect", () => {
         if (socket.connected) {
             console.log(chalk.green.bold("🔗 Connected to ProxyHub server successfully"));
+            console.log(chalk.cyan(`🔗 Stable Tunnel ID: ${stableTunnelId}`));
+            
+            // Send stable tunnel ID to server
+            socket.emit('register-tunnel', {
+                stableTunnelId,
+                port: option.port
+            });
+            
             if (option.debug) {
                 printDebug("Socket connected", {
                     id: socket.id,
+                    stableTunnelId,
                     url: socketUrl,
                     path: socketPath
                 });

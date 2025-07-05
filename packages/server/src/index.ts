@@ -36,15 +36,13 @@ app.use("/", RequestMiddleware, (req, res, next) => {
     }
     
     // Debug logging
-    console.log('Request for socket ID:', socketId);
-    console.log('Available socket IDs:', socketList.map(s => s.id));
+    console.log('Request for stable tunnel ID:', socketId);
     
-    const connectionData = socketList?.find(
-        (item) => item?.id?.toLowerCase() === socketId.toLowerCase()
-    );
+    // Use the new tunnel mapping system
+    const tunnelMapping = socketHandler.getTunnelByStableId(socketId);
     
-    if (!connectionData?.socket || !socketId) {
-        console.log('No matching socket found for:', socketId);
+    if (!tunnelMapping) {
+        console.log('No tunnel mapping found for stable ID:', socketId);
         res.status(404).json({ 
             error: 'Tunnel not found',
             message: 'No active tunnel found for this URL. Please check your connection.'
@@ -53,8 +51,8 @@ app.use("/", RequestMiddleware, (req, res, next) => {
     }
     
     // Check if socket is still connected
-    if (!connectionData.socket.connected) {
-        console.log('Socket found but not connected:', socketId);
+    if (!tunnelMapping.socket.connected) {
+        console.log('Tunnel found but socket not connected:', socketId);
         res.status(503).json({ 
             error: 'Tunnel disconnected',
             message: 'The tunnel connection has been lost. Please reconnect your client.'
@@ -62,9 +60,9 @@ app.use("/", RequestMiddleware, (req, res, next) => {
         return;
     }
     
-    console.log('Successfully found and routing to socket:', socketId);
+    console.log('Successfully found and routing to tunnel:', socketId, '->', tunnelMapping.socketId);
     
-    const requestChannel = new RequestChannel(connectionData.socket, {
+    const requestChannel = new RequestChannel(tunnelMapping.socket, {
         method: req.method,
         headers: {
             ...req?.headers,
@@ -131,25 +129,36 @@ app.use("/", RequestMiddleware, (req, res, next) => {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
+    const tunnelMappings = socketHandler.getAllTunnelMappings();
     res.json({ 
         status: 'healthy',
         timestamp: new Date().toISOString(),
-        activeTunnels: socketList.length
+        activeTunnels: tunnelMappings.length,
+        activeSockets: socketList.length
     });
 });
 
 // Debug endpoint to see active tunnels
 app.get('/debug', (req, res) => {
+    const tunnelMappings = socketHandler.getAllTunnelMappings();
     res.json({
         socketList: socketList.map(s => ({
             id: s.id,
             connected: s.socket.connected,
             socketId: s.socket.id
+        })),
+        tunnelMappings: tunnelMappings.map(mapping => ({
+            stableTunnelId: mapping.stableTunnelId,
+            socketId: mapping.socketId,
+            port: mapping.port,
+            connected: mapping.socket.connected,
+            createdAt: mapping.createdAt,
+            lastActivity: mapping.lastActivity
         }))
     });
 });
 
 const PORT = process.env.PORT || 4000;
 httpServer.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`ProxyHub server is running on port ${PORT}`);
 });

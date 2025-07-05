@@ -9,10 +9,12 @@ import * as path from 'path';
 class SocketHandler {
     private io: Server;
     private tunnelSockets: TunnelSocketObject[];
+    private tunnelMappings: Map<string, TunnelMapping>; // stable tunnel ID -> socket mapping
     private version: string;
 
     constructor(httpServer: http.Server, tunnelSockets: TunnelSocketObject[]) {
         this.tunnelSockets = tunnelSockets;
+        this.tunnelMappings = new Map();
         this.io = new Server(httpServer,
             {
                 path: process?.env?.SOCKET_PATH ?? "/socket.io",
@@ -90,6 +92,52 @@ class SocketHandler {
         this.tunnelSockets = this.tunnelSockets.filter(socket => socket.id !== tunnelSocket.id);
         console.log('Removed socket from list:', tunnelSocket.id);
         console.log('Total active sockets:', this.tunnelSockets.length);
+        
+        // Remove from tunnel mappings
+        this.removeSocketFromTunnelMappings(tunnelSocket.socket.id);
+    }
+    
+    private registerTunnel(stableTunnelId: string, socket: any, port: number) {
+        const mapping: TunnelMapping = {
+            stableTunnelId,
+            socketId: socket.id,
+            socket,
+            port,
+            createdAt: new Date(),
+            lastActivity: new Date()
+        };
+        
+        this.tunnelMappings.set(stableTunnelId, mapping);
+        console.log('Registered tunnel mapping:', stableTunnelId, '->', socket.id);
+        console.log('Total tunnel mappings:', this.tunnelMappings.size);
+    }
+    
+    private removeSocketFromTunnelMappings(socketId: string) {
+        // Find and remove all mappings for this socket
+        const toRemove: string[] = [];
+        this.tunnelMappings.forEach((mapping, stableTunnelId) => {
+            if (mapping.socketId === socketId) {
+                toRemove.push(stableTunnelId);
+            }
+        });
+        
+        toRemove.forEach(stableTunnelId => {
+            this.tunnelMappings.delete(stableTunnelId);
+            console.log('Removed tunnel mapping:', stableTunnelId);
+        });
+    }
+    
+    public getTunnelByStableId(stableTunnelId: string): TunnelMapping | undefined {
+        const mapping = this.tunnelMappings.get(stableTunnelId);
+        if (mapping) {
+            // Update last activity
+            mapping.lastActivity = new Date();
+        }
+        return mapping;
+    }
+    
+    public getAllTunnelMappings(): TunnelMapping[] {
+        return Array.from(this.tunnelMappings.values());
     }
     
     start() {
@@ -105,12 +153,21 @@ class SocketHandler {
             
             this.onConnect({ id: sanitizedId, socket });
 
-            const tunnelInfo = this.getTunnelInfo(originalId);
-            console.log('Generated tunnel info:', tunnelInfo);
+            // Handle tunnel registration from client
+            socket.on('register-tunnel', (data: { stableTunnelId: string, port: number }) => {
+                console.log('Registering tunnel:', data.stableTunnelId, 'for socket:', socket.id);
+                
+                // Register the tunnel mapping
+                this.registerTunnel(data.stableTunnelId, socket, data.port);
+                
+                // Generate tunnel info using the stable tunnel ID
+                const tunnelInfo = this.getTunnelInfo(data.stableTunnelId);
+                console.log('Generated tunnel info:', tunnelInfo);
 
-            socket.emit('on-connect-tunnel', {
-                id: sanitizedId,
-                ...tunnelInfo
+                socket.emit('on-connect-tunnel', {
+                    id: data.stableTunnelId,
+                    ...tunnelInfo
+                });
             });
 
             socket.on("disconnect", () => {
