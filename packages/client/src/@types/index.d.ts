@@ -3,6 +3,8 @@ declare global {
         port: number;
         debug?: boolean;
         keepHistory?: boolean;
+        webInterface?: boolean;
+        webPort?: number;
     }
 
     interface TunnelRequestArgument {
@@ -24,6 +26,29 @@ declare global {
         url: string;
         localPort: number;
         active: boolean;
+    }
+
+    interface RequestLogEntry {
+        id: string;
+        timestamp: number;
+        method: string;
+        path: string;
+        url: string;
+        statusCode?: number;
+        statusMessage?: string;
+        duration?: number;
+        requestHeaders: Record<string, string>;
+        responseHeaders: Record<string, string>;
+        requestBody?: string;
+        responseBody?: string;
+        error?: string;
+    }
+
+    interface LogManager {
+        addLog(entry: RequestLogEntry): void;
+        getLogs(): RequestLogEntry[];
+        clearLogs(): void;
+        getLogById(id: string): RequestLogEntry | undefined;
     }
 }
 

@@ -4,6 +4,8 @@ import { printInfo, printError, printDebug } from "../utils/index.js";
 import * as http from "http";
 import ResponseChannel from "./tunnel.js";
 import * as crypto from "crypto";
+import RequestLogManager from "./log-manager.js";
+import WebServer from "./web-server.js";
 
 const displayTunnelInfo = (data: any) => {
     const line = '─'.repeat(80);
@@ -34,6 +36,43 @@ const displayTunnelInfo = (data: any) => {
 };
 
 const socketHandler = (option: ClientInitializationOptions) => {
+    // Initialize logging system
+    const logManager = new RequestLogManager();
+    let webServer: WebServer | null = null;
+    
+    // Initialize web server if enabled
+    if (option.webInterface) {
+        webServer = new WebServer(logManager, option.webPort || 4001);
+        webServer.start().catch((err) => {
+            printError(`Failed to start web interface: ${err.message}`);
+        });
+        
+        // Add a test log entry to verify the system is working
+        if (option.debug) {
+            const testLog: RequestLogEntry = {
+                id: 'test-' + Date.now(),
+                timestamp: Date.now(),
+                method: 'GET',
+                path: '/test',
+                url: 'http://localhost:3000/test',
+                statusCode: 200,
+                statusMessage: 'OK',
+                duration: 123,
+                requestHeaders: { 'User-Agent': 'ProxyHub Test' },
+                responseHeaders: { 'Content-Type': 'application/json' },
+                requestBody: '',
+                responseBody: '{"message": "Test log entry"}',
+            };
+            
+            setTimeout(() => {
+                logManager.addLog(testLog);
+                if (webServer) {
+                    webServer.broadcastNewLog(testLog);
+                }
+            }, 1000);
+        }
+    }
+    
     // Determine the socket URL from environment or use default
     let socketUrl = (
         process?.env?.SOCKET_URL ?? "https://connect.proxyhub.cloud"
@@ -140,6 +179,19 @@ const socketHandler = (option: ClientInitializationOptions) => {
             hostname: 'localhost',
         };
 
+        // Create log entry
+        const startTime = Date.now();
+        const logEntry: RequestLogEntry = {
+            id: requestId,
+            timestamp: startTime,
+            method: request.method,
+            path: request.path,
+            url: `http://${request.hostname}:${request.port}${request.path}`,
+            requestHeaders: request.headers,
+            responseHeaders: {},
+            requestBody: typeof request.body === "object" ? JSON.stringify(request.body) : request.body,
+        };
+
         if (option.debug) {
             printDebug("Tunnel request received", {
                 requestId,
@@ -176,6 +228,16 @@ const socketHandler = (option: ClientInitializationOptions) => {
             if (option.debug) {
                 printDebug("Request error", error);
             }
+            
+            // Update log entry with error
+            logEntry.error = error.message;
+            logEntry.duration = Date.now() - startTime;
+            logManager.addLog(logEntry);
+            
+            if (webServer) {
+                webServer.broadcastNewLog(logEntry);
+            }
+            
             proxyRequest.off("response", () => {});
         });
 
@@ -184,6 +246,17 @@ const socketHandler = (option: ClientInitializationOptions) => {
             proxyRequest.off("error", () => {});
             
             const tunnelResponse = new ResponseChannel(socket, requestId);
+            
+            // Update log entry with response info
+            logEntry.statusCode = response.statusCode;
+            logEntry.statusMessage = response.statusMessage;
+            logEntry.duration = Date.now() - startTime;
+            logEntry.responseHeaders = Object.fromEntries(
+                Object.entries(response.headers).map(([key, value]) => [
+                    key,
+                    Array.isArray(value) ? value.join(', ') : value || ''
+                ])
+            );
             
             // Log the request
             console.log(
@@ -209,16 +282,60 @@ const socketHandler = (option: ClientInitializationOptions) => {
                 httpVersion: response.httpVersion,
             });
 
+            // Collect response body and pipe to tunnel
+            let responseBody = '';
+            let chunks: Buffer[] = [];
+            
+            response.on('data', (chunk: Buffer) => {
+                chunks.push(chunk);
+                responseBody += chunk.toString();
+                tunnelResponse.write(chunk);
+            });
+
+            response.on('end', () => {
+                // Update log entry with response body
+                logEntry.responseBody = responseBody;
+                logManager.addLog(logEntry);
+                
+                if (option.debug) {
+                    printDebug("Log added", {
+                        id: logEntry.id,
+                        method: logEntry.method,
+                        path: logEntry.path,
+                        statusCode: logEntry.statusCode,
+                        logCount: logManager.getLogCount()
+                    });
+                }
+                
+                if (webServer) {
+                    webServer.broadcastNewLog(logEntry);
+                    if (option.debug) {
+                        printDebug("Log broadcasted to web interface", { id: logEntry.id });
+                    }
+                }
+                
+                // End the tunnel response
+                tunnelResponse.end();
+            });
+
             // Handle response errors
             response.on("error", (error: Error) => {
                 printError(`Response error: ${error.message}`);
                 if (option.debug) {
                     printDebug("Response error", error);
                 }
+                
+                // Update log entry with error
+                logEntry.error = error.message;
+                logManager.addLog(logEntry);
+                
+                if (webServer) {
+                    webServer.broadcastNewLog(logEntry);
+                }
+                
+                // Destroy the tunnel response
+                tunnelResponse.destroy();
             });
-
-            // Pipe response data through tunnel
-            response.pipe(tunnelResponse);
         });
 
         // Write request body if present
@@ -234,12 +351,18 @@ const socketHandler = (option: ClientInitializationOptions) => {
     process.on('SIGINT', () => {
         console.log(chalk.yellow.bold('\n🛑 Shutting down ProxyHub client...'));
         socket.disconnect();
+        if (webServer) {
+            webServer.stop();
+        }
         process.exit(0);
     });
 
     process.on('SIGTERM', () => {
         console.log(chalk.yellow.bold('\n🛑 Shutting down ProxyHub client...'));
         socket.disconnect();
+        if (webServer) {
+            webServer.stop();
+        }
         process.exit(0);
     });
 

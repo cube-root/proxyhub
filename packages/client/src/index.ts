@@ -23,7 +23,9 @@ program
     .version(version)
     .requiredOption('-p, --port <port>', 'Port number for proxying', portNumberCustomValidationForCommander)
     .option('-d, --debug', 'Enable debug mode')
-    .option('-keep, --keep-history', 'Do not delete history on disconnect');
+    .option('-keep, --keep-history', 'Do not delete history on disconnect')
+    .option('-w, --web-interface', 'Enable web interface for viewing request logs')
+    .option('-wp, --web-port <port>', 'Port for web interface (default: 4001)', portNumberCustomValidationForCommander);
 
 // Parse command line arguments
 program.parse(process.argv);
