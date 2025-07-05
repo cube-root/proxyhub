@@ -1,12 +1,33 @@
 {
   "name": "proxyhub",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build":"npm run build --workspaces",
+    "clean": "npm run clean --workspaces --parallel"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cube-root/proxyhub.git"
+  },
+  "keywords": [
+    "proxy",
+    "api-testing",
+    "testing",
+    "intercept",
+    "api-interceptor"
+  ],
+  "author": "Abhijith V <https://github.com/abhisawesome>",
+  "license": "Modified MIT",
+  "bugs": {
+    "url": "https://github.com/cube-root/proxyhub/issues"
+  },
+  "homepage": "https://github.com/cube-root/proxyhub#readme",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }
