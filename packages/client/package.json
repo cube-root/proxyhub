@@ -1,0 +1,36 @@
+{
+  "name": "@proxyhub/client",
+  "version": "0.0.1",
+  "description": "ProxyHub CLI - Test your APIs with ease",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "proxyhub": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "nodemon --exec \"tsx src/index.ts\" -- -p 3000 -d",
+    "dev:custom": "nodemon --exec \"tsx src/index.ts\" --",
+    "test": "tsx src/index.ts -p 8080 -d --keep-history",
+    "example-server": "node example-server.js",
+    "prepublish": "npm run build"
+  },
+  "keywords": ["proxy", "tunnel", "cli", "api", "testing"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "express": "^4.18.2",
+    "nodemon": "^3.1.10",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.0.0",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.8.1",
+    "commander": "^12.0.0",
+    "chalk": "^5.3.0",
+    "dotenv": "^16.4.5"
+  }
+}
