@@ -26,9 +26,6 @@ const displayTunnelInfo = (data: any) => {
     console.log(formatLine('Version', data.version || '1.0.0', chalk.white));
     console.log(formatLine('Forwarding', `${data.tunnelUrl || 'N/A'} -> http://localhost:${data.port || 'N/A'}`, chalk.cyan));
     console.log();
-    console.log(formatLine('Connections', 'ttl     opn     rt1     rt5     p50     p90', chalk.white));
-    console.log(formatLine('', '0       0       0.00    0.00    0.00    0.00', chalk.white));
-    console.log();
     console.log(chalk.cyan(line));
     console.log();
 };
@@ -141,6 +138,18 @@ const socketHandler = (option: ClientInitializationOptions) => {
     // Handle timeout events
     socket.on("timeout-triggered", (message) => {
         printError(`Connection timeout: ${message.message}`);
+    });
+
+    // Handle connection timeout warning
+    socket.on("connection-timeout", (data) => {
+        console.log(chalk.yellow.bold("⏰ Connection Timeout Warning"));
+        console.log(chalk.yellow(`${data.message}`));
+        console.log(chalk.gray(`Your connection has been active for ${data.timeoutMinutes} minutes.`));
+        console.log(chalk.gray("The connection will be closed in 5 seconds..."));
+        
+        if (option.debug) {
+            printDebug("Connection timeout", data);
+        }
     });
 
     // Handle disconnection

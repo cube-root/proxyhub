@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "nodemon --exec \"tsx src/index.ts\" -- -p 3000 -d",
+    "dev": "nodemon --exec \"tsx src/index.ts\" -- -p 3000 ",
     "dev:custom": "nodemon --exec \"tsx src/index.ts\" --",
     "test": "tsx src/index.ts -p 8080 -d --keep-history",
     "example-server": "node example-server.js",

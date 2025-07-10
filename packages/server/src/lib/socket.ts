@@ -10,11 +10,13 @@ class SocketHandler {
     private io: Server;
     private tunnelSockets: TunnelSocketObject[];
     private tunnelMappings: Map<string, TunnelMapping>; // stable tunnel ID -> socket mapping
+    private connectionTimeouts: Map<string, NodeJS.Timeout>; // socket ID -> timeout
     private version: string;
 
     constructor(httpServer: http.Server, tunnelSockets: TunnelSocketObject[]) {
         this.tunnelSockets = tunnelSockets;
         this.tunnelMappings = new Map();
+        this.connectionTimeouts = new Map();
         this.io = new Server(httpServer,
             {
                 path: process?.env?.SOCKET_PATH ?? "/socket.io",
@@ -86,6 +88,9 @@ class SocketHandler {
         this.tunnelSockets.push(tunnelSocket);
         console.log('Added socket to list:', tunnelSocket.id);
         console.log('Total active sockets:', this.tunnelSockets.length);
+        
+        // Set 30-minute timeout for connection
+        this.setConnectionTimeout(tunnelSocket.socket);
     }
     
     private onDisconnect(tunnelSocket: TunnelSocketObject) {
@@ -95,6 +100,38 @@ class SocketHandler {
         
         // Remove from tunnel mappings
         this.removeSocketFromTunnelMappings(tunnelSocket.socket.id);
+        
+        // Clear connection timeout
+        this.clearConnectionTimeout(tunnelSocket.socket.id);
+    }
+    
+    private setConnectionTimeout(socket: any) {
+        const timeoutDuration = 30 * 60 * 1000; // 30 minutes in milliseconds
+        
+        const timeout = setTimeout(() => {
+            console.log(`Connection timeout reached for socket ${socket.id}, disconnecting...`);
+            socket.emit('connection-timeout', {
+                message: 'Connection has been active for 30 minutes and will be disconnected.',
+                timeoutMinutes: 30
+            });
+            
+            // Give client 5 seconds to handle the timeout message, then disconnect
+            setTimeout(() => {
+                socket.disconnect(true);
+            }, 5000);
+        }, timeoutDuration);
+        
+        this.connectionTimeouts.set(socket.id, timeout);
+        console.log(`Set 30-minute timeout for socket ${socket.id}`);
+    }
+    
+    private clearConnectionTimeout(socketId: string) {
+        const timeout = this.connectionTimeouts.get(socketId);
+        if (timeout) {
+            clearTimeout(timeout);
+            this.connectionTimeouts.delete(socketId);
+            console.log(`Cleared timeout for socket ${socketId}`);
+        }
     }
     
     private registerTunnel(stableTunnelId: string, socket: any, port: number) {
@@ -140,6 +177,10 @@ class SocketHandler {
         return Array.from(this.tunnelMappings.values());
     }
     
+    public getConnectionTimeouts(): Map<string, NodeJS.Timeout> {
+        return this.connectionTimeouts;
+    }
+    
     start() {
         this.io.on("connection", (socket) => {
             console.log("socket connected", socket.id);
@@ -157,7 +198,7 @@ class SocketHandler {
             socket.on('register-tunnel', (data: { stableTunnelId: string, port: number }) => {
                 console.log('Registering tunnel:', data.stableTunnelId, 'for socket:', socket.id);
                 
-                // Register the tunnel mapping
+                // Register the tunnel matunnelUrlpping
                 this.registerTunnel(data.stableTunnelId, socket, data.port);
                 
                 // Generate tunnel info using the stable tunnel ID

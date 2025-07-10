@@ -127,36 +127,7 @@ app.use("/", RequestMiddleware, (req, res, next) => {
     
 }, ResponseMiddleware);
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-    const tunnelMappings = socketHandler.getAllTunnelMappings();
-    res.json({ 
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-        activeTunnels: tunnelMappings.length,
-        activeSockets: socketList.length
-    });
-});
 
-// Debug endpoint to see active tunnels
-app.get('/debug', (req, res) => {
-    const tunnelMappings = socketHandler.getAllTunnelMappings();
-    res.json({
-        socketList: socketList.map(s => ({
-            id: s.id,
-            connected: s.socket.connected,
-            socketId: s.socket.id
-        })),
-        tunnelMappings: tunnelMappings.map(mapping => ({
-            stableTunnelId: mapping.stableTunnelId,
-            socketId: mapping.socketId,
-            port: mapping.port,
-            connected: mapping.socket.connected,
-            createdAt: mapping.createdAt,
-            lastActivity: mapping.lastActivity
-        }))
-    });
-});
 
 const PORT = process.env.PORT || 4000;
 httpServer.listen(PORT, () => {

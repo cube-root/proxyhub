@@ -22,8 +22,8 @@ program
     .description("Test your API's with ease - Tunnel localhost to the internet")
     .version(version)
     .requiredOption('-p, --port <port>', 'Port number for proxying', portNumberCustomValidationForCommander)
-    .option('-d, --debug', 'Enable debug mode')
-    .option('-keep, --keep-history', 'Do not delete history on disconnect');
+    .option('-d, --debug', 'Enable debug mode', false)
+    // .option('-keep, --keep-history', 'Do not delete history on disconnect');
 
 // Parse command line arguments
 program.parse(process.argv);
