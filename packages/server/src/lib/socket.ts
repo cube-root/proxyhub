@@ -106,23 +106,47 @@ class SocketHandler {
     }
     
     private setConnectionTimeout(socket: any) {
-        const timeoutDuration = 30 * 60 * 1000; // 30 minutes in milliseconds
+        // Clear any existing timeout for this socket
+        this.clearConnectionTimeout(socket.id);
+        
+        // Get timeout duration from environment variable (in minutes), default to 30 minutes
+        const timeoutMinutes = parseInt(process.env.CONNECTION_TIMEOUT_MINUTES || '30', 10);
+        
+        // If timeout is 0 or negative, disable timeout
+        if (timeoutMinutes <= 0) {
+            console.log(`Timeout disabled for socket ${socket.id} (CONNECTION_TIMEOUT_MINUTES=${timeoutMinutes})`);
+            return;
+        }
+        
+        const timeoutDuration = timeoutMinutes * 60 * 1000; // Convert minutes to milliseconds
         
         const timeout = setTimeout(() => {
-            console.log(`Connection timeout reached for socket ${socket.id}, disconnecting...`);
-            socket.emit('connection-timeout', {
-                message: 'Connection has been active for 30 minutes and will be disconnected.',
-                timeoutMinutes: 30
-            });
+            console.log(`Connection timeout reached for socket ${socket.id} after ${timeoutMinutes} minutes, disconnecting...`);
             
-            // Give client 5 seconds to handle the timeout message, then disconnect
-            setTimeout(() => {
-                socket.disconnect(true);
-            }, 5000);
+            // Check if socket is still connected before emitting
+            if (socket.connected) {
+                socket.emit('connection-timeout', {
+                    message: `Connection has been active for ${timeoutMinutes} minutes and will be disconnected.`,
+                    timeoutMinutes: timeoutMinutes
+                });
+                
+                // Give client 5 seconds to handle the timeout message, then disconnect
+                setTimeout(() => {
+                    if (socket.connected) {
+                        console.log(`Forcefully disconnecting socket ${socket.id} after timeout`);
+                        socket.disconnect(true);
+                    }
+                }, 5000);
+            } else {
+                console.log(`Socket ${socket.id} already disconnected, skipping timeout disconnect`);
+            }
+            
+            // Clean up the timeout reference
+            this.connectionTimeouts.delete(socket.id);
         }, timeoutDuration);
         
         this.connectionTimeouts.set(socket.id, timeout);
-        console.log(`Set 30-minute timeout for socket ${socket.id}`);
+        console.log(`Set ${timeoutMinutes}-minute timeout for socket ${socket.id} (timeout in ${timeoutDuration}ms)`);
     }
     
     private clearConnectionTimeout(socketId: string) {
@@ -205,9 +229,20 @@ class SocketHandler {
                 const tunnelInfo = this.getTunnelInfo(data.stableTunnelId);
                 console.log('Generated tunnel info:', tunnelInfo);
 
+                // Get timeout configuration for client display
+                const timeoutMinutes = parseInt(process.env.CONNECTION_TIMEOUT_MINUTES || '30', 10);
+                const timeoutEnabled = timeoutMinutes > 0;
+                const sessionStartTime = Date.now();
+
                 socket.emit('on-connect-tunnel', {
                     id: data.stableTunnelId,
-                    ...tunnelInfo
+                    ...tunnelInfo,
+                    timeout: {
+                        minutes: timeoutMinutes,
+                        enabled: timeoutEnabled,
+                        sessionStartTime: sessionStartTime,
+                        durationMs: timeoutEnabled ? timeoutMinutes * 60 * 1000 : 0
+                    }
                 });
             });
 
