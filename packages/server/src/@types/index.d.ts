@@ -7,11 +7,6 @@ declare global {
         }
     }
 
-    interface TunnelSocketObject {
-        id: String,
-        socket: Socket
-    }
-
     interface TunnelMapping {
         stableTunnelId: string;
         socketId: string;
