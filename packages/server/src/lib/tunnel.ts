@@ -1,5 +1,6 @@
 import { Socket } from 'socket.io'
 import { v4 as uuidv4 } from 'uuid'
+import { EventEmitter } from 'stream'
 
 interface RequestData {
     method: string
@@ -82,11 +83,11 @@ function createTunnelRequest(
     }
 }
 
-// Backward-compatible class wrapper using the function internally
-import { EventEmitter } from 'stream'
-
+// RequestChannel with pause/resume support for backpressure handling
 class RequestChannel extends EventEmitter {
     private tunnelRequest: TunnelRequest
+    private paused: boolean = false
+    private buffer: any[] = []
 
     constructor(socket: Socket, data: RequestData) {
         super()
@@ -95,7 +96,11 @@ class RequestChannel extends EventEmitter {
                 this.emit('response-header', statusCode, headers)
             },
             onData: (chunk) => {
-                this.emit('data', chunk)
+                if (this.paused) {
+                    this.buffer.push(chunk)
+                } else {
+                    this.emit('data', chunk)
+                }
             },
             onEnd: () => {
                 this.emit('end')
@@ -106,8 +111,22 @@ class RequestChannel extends EventEmitter {
         })
     }
 
+    pause(): void {
+        this.paused = true
+    }
+
+    resume(): void {
+        this.paused = false
+        // Flush buffered chunks
+        while (this.buffer.length > 0 && !this.paused) {
+            const chunk = this.buffer.shift()
+            this.emit('data', chunk)
+        }
+    }
+
     destroy() {
         this.tunnelRequest.destroy()
+        this.buffer = []
         this.removeAllListeners()
     }
 }

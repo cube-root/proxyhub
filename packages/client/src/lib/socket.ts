@@ -2,7 +2,7 @@ import { io, Socket } from "socket.io-client";
 import chalk from "chalk";
 import { printError, printDebug } from "../utils/index.js";
 import * as http from "http";
-import { createResponseEmitter } from "./tunnel.js";
+import { ResponseChannel } from "./tunnel.js";
 import * as crypto from "crypto";
 
 // Global state for timeout tracking
@@ -57,6 +57,10 @@ const displayTunnelInfo = (data: any) => {
     console.log(formatLine('Status', data.status || 'online', chalk.green));
     console.log(formatLine('Version', data.version || '1.0.0', chalk.white));
     console.log(formatLine('Forwarding', `${data.tunnelUrl || 'N/A'} -> localhost:${data.port || 'N/A'}`, chalk.cyan));
+
+    if (data.tokenProtected) {
+        console.log(formatLine('Token Protection', 'Enabled (X-Proxy-Token header required)', chalk.green));
+    }
 
     if (data.timeout?.enabled) {
         const expirationTime = formatExpirationTime(data.timeout.sessionStartTime, data.timeout.durationMs);
@@ -165,7 +169,8 @@ const socketHandler = (option: ClientInitializationOptions) => {
 
             socket.emit('register-tunnel', {
                 stableTunnelId,
-                port: option.port
+                port: option.port,
+                token: option.token
             });
 
             if (option.debug) {
@@ -278,7 +283,7 @@ const socketHandler = (option: ClientInitializationOptions) => {
         });
 
         proxyRequest.once("response", (response: http.IncomingMessage) => {
-            const responseEmitter = createResponseEmitter(socket, requestId);
+            const responseChannel = new ResponseChannel(socket, requestId);
 
             // Log the request
             const statusColor = response.statusCode === 200
@@ -293,7 +298,7 @@ const socketHandler = (option: ClientInitializationOptions) => {
                 statusColor(response.statusCode?.toString() || '')
             );
 
-            responseEmitter.sendHeaders({
+            responseChannel.sendHeaders({
                 statusCode: response.statusCode,
                 statusMessage: response.statusMessage,
                 headers: Object.fromEntries(
@@ -305,17 +310,12 @@ const socketHandler = (option: ClientInitializationOptions) => {
                 httpVersion: response.httpVersion,
             });
 
-            response.on("data", (chunk) => {
-                responseEmitter.sendChunk(chunk);
-            });
-
-            response.on("end", () => {
-                responseEmitter.sendEnd();
-            });
+            // Use pipe for automatic backpressure handling
+            response.pipe(responseChannel);
 
             response.on("error", (error: Error) => {
                 printError(`Response error: ${error.message}`);
-                responseEmitter.sendDestroy();
+                responseChannel.destroy(error);
                 if (option.debug) {
                     printDebug("Response error", error);
                 }

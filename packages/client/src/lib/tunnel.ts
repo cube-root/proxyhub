@@ -1,4 +1,5 @@
 import { Socket } from 'socket.io-client';
+import { Writable } from 'stream';
 
 interface ResponseHeaderInfo {
     statusCode?: number;
@@ -7,28 +8,48 @@ interface ResponseHeaderInfo {
     httpVersion?: string;
 }
 
-interface ResponseEmitter {
-    sendHeaders: (data: ResponseHeaderInfo) => void;
-    sendChunk: (chunk: any) => void;
-    sendEnd: () => void;
-    sendDestroy: () => void;
-}
+class ResponseChannel extends Writable {
+    private socket: Socket;
+    private requestId: string;
+    private headersSent: boolean = false;
 
-function createResponseEmitter(socket: Socket, requestId: string): ResponseEmitter {
-    return {
-        sendHeaders: (data: ResponseHeaderInfo) => {
-            socket.emit('response-headers', requestId, data);
-        },
-        sendChunk: (chunk: any) => {
-            socket.emit('response-chunk', requestId, chunk);
-        },
-        sendEnd: () => {
-            socket.emit('response-end', requestId);
-        },
-        sendDestroy: () => {
-            socket.emit('response-destroy', requestId);
+    constructor(socket: Socket, requestId: string) {
+        super();
+        this.socket = socket;
+        this.requestId = requestId;
+    }
+
+    sendHeaders(data: ResponseHeaderInfo): void {
+        if (!this.headersSent) {
+            this.socket.emit('response-headers', this.requestId, data);
+            this.headersSent = true;
         }
-    };
+    }
+
+    _write(chunk: any, encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
+        const flushed = this.socket.emit('response-chunk', this.requestId, chunk);
+
+        // Check if the socket's internal buffer is full
+        if (this.socket.io?.engine?.transport?.writable === false) {
+            // Wait for drain event before accepting more data
+            this.socket.io.engine.once('drain', () => {
+                callback();
+            });
+        } else {
+            // Buffer has space, continue immediately
+            callback();
+        }
+    }
+
+    _final(callback: (error?: Error | null) => void): void {
+        this.socket.emit('response-end', this.requestId);
+        callback();
+    }
+
+    _destroy(error: Error | null, callback: (error?: Error | null) => void): void {
+        this.socket.emit('response-destroy', this.requestId);
+        callback(error);
+    }
 }
 
-export { createResponseEmitter, ResponseEmitter };
+export { ResponseChannel };

@@ -23,17 +23,26 @@ program
     .description("Test your API's with ease - Tunnel localhost to the internet")
     .version(version)
     .requiredOption('-p, --port <port>', 'Port number for proxying', portNumberCustomValidationForCommander)
-    .option('-d, --debug', 'Enable debug mode', false);
+    .option('-d, --debug', 'Enable debug mode', false)
+    .option('-t, --token <token>', 'Token for tunnel protection');
 
 // Parse command line arguments
 program.parse(process.argv);
 
-// Get parsed options
-const options: ClientInitializationOptions = program.opts();
+// Get parsed options and check for env var fallback
+const parsedOpts = program.opts() as ClientInitializationOptions;
+const options: ClientInitializationOptions = {
+    port: parsedOpts.port,
+    debug: parsedOpts.debug,
+    token: parsedOpts.token || process.env.PROXYHUB_TOKEN
+};
 
 // Startup logging
 console.log('\nStarting ProxyHub Client...');
 console.log('Target:', chalk.cyan(`http://localhost:${options.port}`));
+if (options.token) {
+    console.log('Token protection:', chalk.green('enabled'));
+}
 if (options.debug) {
     console.log('Debug mode:', chalk.green('enabled'));
 }

@@ -14,5 +14,6 @@ declare global {
         port: number;
         createdAt: Date;
         lastActivity: Date;
+        token?: string | null;
     }
 }

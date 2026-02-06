@@ -121,18 +121,19 @@ class SocketHandler {
         }
     }
 
-    private registerTunnel(stableTunnelId: string, socket: any, port: number) {
+    private registerTunnel(stableTunnelId: string, socket: any, port: number, token?: string) {
         const mapping: TunnelMapping = {
             stableTunnelId,
             socketId: socket.id,
             socket,
             port,
             createdAt: new Date(),
-            lastActivity: new Date()
+            lastActivity: new Date(),
+            token: token || null
         };
 
         this.tunnelMappings.set(stableTunnelId, mapping);
-        console.log('Tunnel registered:', stableTunnelId);
+        console.log('Tunnel registered:', stableTunnelId, token ? '(token protected)' : '');
         debug('Total tunnel mappings:', this.tunnelMappings.size);
     }
 
@@ -171,10 +172,10 @@ class SocketHandler {
             console.log("Socket connected:", socket.id);
             this.setConnectionTimeout(socket);
 
-            socket.on('register-tunnel', (data: { stableTunnelId: string, port: number }) => {
+            socket.on('register-tunnel', (data: { stableTunnelId: string, port: number, token?: string }) => {
                 debug('Registering tunnel:', data.stableTunnelId, 'for socket:', socket.id);
 
-                this.registerTunnel(data.stableTunnelId, socket, data.port);
+                this.registerTunnel(data.stableTunnelId, socket, data.port, data.token);
 
                 const tunnelInfo = this.getTunnelInfo(data.stableTunnelId);
                 debug('Generated tunnel info:', tunnelInfo);
@@ -186,6 +187,7 @@ class SocketHandler {
                 socket.emit('on-connect-tunnel', {
                     id: data.stableTunnelId,
                     ...tunnelInfo,
+                    tokenProtected: !!data.token,
                     timeout: {
                         minutes: timeoutMinutes,
                         enabled: timeoutEnabled,

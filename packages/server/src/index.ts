@@ -3,10 +3,23 @@ import express from "express";
 import "dotenv/config";
 import http from 'http';
 import cors from 'cors';
+import crypto from 'crypto';
 import SocketHandler from "./lib/socket";
 import RequestMiddleware from "./middlewares/request";
 import { RequestChannel } from "./lib/tunnel";
 import { debug } from "./utils/debug";
+
+// Timing-safe token comparison to prevent timing attacks
+function timingSafeEqual(a: string, b: string): boolean {
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    if (bufA.length !== bufB.length) {
+        // Compare against itself to maintain constant time
+        crypto.timingSafeEqual(bufA, bufA);
+        return false;
+    }
+    return crypto.timingSafeEqual(bufA, bufB);
+}
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -51,6 +64,27 @@ app.use("/", RequestMiddleware, (req, res) => {
         return;
     }
 
+    // Token validation
+    if (tunnelMapping.token) {
+        const providedToken = req.headers['x-proxy-token'] as string | undefined;
+        if (!providedToken) {
+            debug('Token required but not provided for tunnel:', socketId);
+            res.status(401).json({
+                error: 'Unauthorized',
+                message: 'This tunnel requires authentication. Provide X-Proxy-Token header.'
+            });
+            return;
+        }
+        if (!timingSafeEqual(providedToken, tunnelMapping.token)) {
+            debug('Invalid token provided for tunnel:', socketId);
+            res.status(401).json({
+                error: 'Unauthorized',
+                message: 'Invalid token provided.'
+            });
+            return;
+        }
+    }
+
     debug('Routing to tunnel:', socketId, '->', tunnelMapping.socketId);
 
     const requestChannel = new RequestChannel(tunnelMapping.socket, {
@@ -84,7 +118,14 @@ app.use("/", RequestMiddleware, (req, res) => {
     });
 
     requestChannel.on("data", (chunk) => {
-        res.write(chunk);
+        const flushed = res.write(chunk);
+        if (!flushed) {
+            // Backpressure: pause incoming data until drain
+            requestChannel.pause();
+            res.once('drain', () => {
+                requestChannel.resume();
+            });
+        }
     });
 
     requestChannel.once("end", () => {

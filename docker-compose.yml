@@ -1,0 +1,21 @@
+services:
+  server:
+    build:
+      context: ./packages/server
+      dockerfile: Dockerfile
+    container_name: proxyhub-server
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - BASE_DOMAIN=${BASE_DOMAIN:-proxyhub.cloud}
+      - PROTOCOL=${PROTOCOL:-https}
+      - SOCKET_PATH=${SOCKET_PATH:-/socket.io}
+      - CONNECTION_TIMEOUT_MINUTES=${CONNECTION_TIMEOUT_MINUTES:-30}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:4000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

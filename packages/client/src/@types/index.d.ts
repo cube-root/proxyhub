@@ -2,6 +2,7 @@ declare global {
     interface ClientInitializationOptions {
         port: number;
         debug?: boolean;
+        token?: string;
     }
 
     interface TunnelRequestArgument {

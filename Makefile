@@ -1,17 +1,26 @@
 # ProxyHub Development Makefile
 
 .PHONY: mock-api client server install dev clean help
+.PHONY: docker-build docker-up docker-down docker-logs docker-restart
 
 # Default target
 help:
 	@echo "ProxyHub Development Commands"
 	@echo ""
-	@echo "  make mock-api    - Start mock API server on port 3000"
-	@echo "  make client      - Start ProxyHub client (connects to port 3000)"
-	@echo "  make server      - Start ProxyHub server"
-	@echo "  make dev         - Start server and client in parallel"
-	@echo "  make install     - Install dependencies for all packages"
-	@echo "  make clean       - Clean node_modules"
+	@echo "Local Development:"
+	@echo "  make mock-api       - Start mock API server on port 3000"
+	@echo "  make client         - Start ProxyHub client (connects to port 3000)"
+	@echo "  make client-debug   - Start client with debug mode"
+	@echo "  make server         - Start ProxyHub server"
+	@echo "  make install        - Install dependencies for all packages"
+	@echo "  make clean          - Clean node_modules"
+	@echo ""
+	@echo "Docker:"
+	@echo "  make docker-build   - Build Docker image"
+	@echo "  make docker-up      - Start server with Docker Compose"
+	@echo "  make docker-down    - Stop Docker containers"
+	@echo "  make docker-logs    - View Docker logs"
+	@echo "  make docker-restart - Rebuild and restart containers"
 	@echo ""
 
 # Start mock API server using always-true
@@ -41,3 +50,19 @@ clean:
 	rm -rf node_modules
 	rm -rf packages/client/node_modules
 	rm -rf packages/server/node_modules
+
+# Docker commands
+docker-build:
+	docker compose build
+
+docker-up:
+	docker compose up -d
+
+docker-down:
+	docker compose down
+
+docker-logs:
+	docker compose logs -f
+
+docker-restart:
+	docker compose up -d --build
