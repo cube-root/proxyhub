@@ -151,6 +151,10 @@ class SocketHandler {
         });
     }
 
+    public getVersion(): string {
+        return this.version;
+    }
+
     public getTunnelByStableId(stableTunnelId: string): TunnelMapping | undefined {
         const mapping = this.tunnelMappings.get(stableTunnelId);
         if (mapping) {

@@ -8,6 +8,7 @@ import SocketHandler from "./lib/socket";
 import RequestMiddleware from "./middlewares/request";
 import { RequestChannel } from "./lib/tunnel";
 import { debug } from "./utils/debug";
+import { extractIdFromDomain, isValidSocketId } from './utils/domain';
 
 // Timing-safe token comparison to prevent timing attacks
 function timingSafeEqual(a: string, b: string): boolean {
@@ -30,6 +31,18 @@ socketHandler.start();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(cors());
+
+app.get('/status', (req, res, next) => {
+    const id = extractIdFromDomain(req.hostname);
+    if (id && isValidSocketId(id)) {
+        return next(); // tunnel subdomain — let proxy handle it
+    }
+    res.json({
+        status: 'ok',
+        uptime: process.uptime(),
+        version: socketHandler.getVersion(),
+    });
+});
 
 app.use("/", RequestMiddleware, (req, res) => {
     const socketId: any = req.id;
