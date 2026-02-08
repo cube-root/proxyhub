@@ -1,0 +1,17 @@
+{
+  "git": {
+    "commitMessage": "chore(server): release v${version}",
+    "tagName": "server-v${version}",
+    "tagAnnotation": "Release server v${version}"
+  },
+  "npm": {
+    "publish": false
+  },
+  "github": {
+    "release": true,
+    "releaseName": "Server v${version}"
+  },
+  "hooks": {
+    "before:init": ["npm run build"]
+  }
+}

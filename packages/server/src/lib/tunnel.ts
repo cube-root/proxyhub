@@ -1,6 +1,6 @@
 import { Socket } from 'socket.io'
-import { EventEmitter } from 'stream'
 import { v4 as uuidv4 } from 'uuid'
+import { EventEmitter } from 'stream'
 
 interface RequestData {
     method: string
@@ -9,91 +9,126 @@ interface RequestData {
     body: object
 }
 
-interface ResponseHeader {
-    statusCode?: number,
-    statusMessage?: string,
-    headers: object,
-    httpVersion: string
+interface TunnelRequestHandlers {
+    onHeaders: (statusCode: number, headers: object) => void
+    onData: (chunk: any) => void
+    onEnd: () => void
+    onError?: (err: Error) => void
 }
 
-interface Listeners {
-    onResponseHeader: (requestId: string, data: ResponseHeader) => void;
-    onResponseChunk: (requestId: string, chunk: any) => void;
-    onResponseEnd: (requestId: string) => void;
-    onResponseDestroy: (requestId: string) => void;
+interface TunnelRequest {
+    requestId: string
+    destroy: () => void
 }
 
+function createTunnelRequest(
+    socket: Socket,
+    data: RequestData,
+    handlers: TunnelRequestHandlers
+): TunnelRequest {
+    const requestId = uuidv4()
+    let destroyed = false
+
+    const onResponseHeader = (reqId: string, responseData: any) => {
+        if (reqId === requestId && !destroyed) {
+            handlers.onHeaders(responseData?.statusCode, responseData?.headers)
+        }
+    }
+
+    const onResponseChunk = (reqId: string, chunk: any) => {
+        if (reqId === requestId && !destroyed) {
+            handlers.onData(chunk)
+        }
+    }
+
+    const onResponseEnd = (reqId: string) => {
+        if (reqId === requestId && !destroyed) {
+            handlers.onEnd()
+            cleanup()
+        }
+    }
+
+    const onResponseDestroy = (reqId: string) => {
+        if (reqId === requestId && !destroyed) {
+            cleanup()
+        }
+    }
+
+    const cleanup = () => {
+        if (destroyed) return
+        destroyed = true
+        socket.off('response-headers', onResponseHeader)
+        socket.off('response-chunk', onResponseChunk)
+        socket.off('response-end', onResponseEnd)
+        socket.off('response-destroy', onResponseDestroy)
+    }
+
+    // Set up listeners
+    socket.on('response-headers', onResponseHeader)
+    socket.on('response-chunk', onResponseChunk)
+    socket.once('response-end', onResponseEnd)
+    socket.once('response-destroy', onResponseDestroy)
+
+    // Emit the request
+    socket.emit('tunnel-request', requestId, data)
+
+    return {
+        requestId,
+        destroy: () => {
+            if (!destroyed) {
+                cleanup()
+                socket.emit('client-destroy', requestId)
+            }
+        }
+    }
+}
+
+// RequestChannel with pause/resume support for backpressure handling
 class RequestChannel extends EventEmitter {
-    private requestId: string;
-    private socket: Socket;
-    private _listeners: Listeners | null = null;
-    private destroyed = false;
+    private tunnelRequest: TunnelRequest
+    private paused: boolean = false
+    private buffer: any[] = []
 
     constructor(socket: Socket, data: RequestData) {
-        super();
-        this.requestId = uuidv4();
-        this.socket = socket;
-
-        // Emit request immediately
-        this.socket.emit('tunnel-request', this.requestId, data);
-        this.setupListeners();
+        super()
+        this.tunnelRequest = createTunnelRequest(socket, data, {
+            onHeaders: (statusCode, headers) => {
+                this.emit('response-header', statusCode, headers)
+            },
+            onData: (chunk) => {
+                if (this.paused) {
+                    this.buffer.push(chunk)
+                } else {
+                    this.emit('data', chunk)
+                }
+            },
+            onEnd: () => {
+                this.emit('end')
+            },
+            onError: (err) => {
+                this.emit('error', err)
+            }
+        })
     }
 
-    private setupListeners() {
-        const onResponseHeader = (requestId: string, data: ResponseHeader) => {
-            if (requestId === this.requestId && !this.destroyed) {
-                this.emit('response-header', data?.statusCode, data?.headers);
-            }
-        };
-
-        const onResponseChunk = (requestId: string, chunk: any) => {
-            if (requestId === this.requestId && !this.destroyed) {
-                // Stream chunks directly without accumulating
-                this.emit('data', chunk);
-            }
-        };
-
-        const onResponseEnd = (requestId: string) => {
-            if (requestId === this.requestId && !this.destroyed) {
-                this.emit('end');
-                this.cleanup();
-            }
-        };
-
-        const onResponseDestroy = (requestId: string) => {
-            if (requestId === this.requestId && !this.destroyed) {
-                this.emit('destroy');
-                this.cleanup();
-            }
-        };
-
-        // Use .once() for better memory management
-        this.socket.on('response-headers', onResponseHeader);
-        this.socket.on('response-chunk', onResponseChunk);
-        this.socket.once('response-end', onResponseEnd);
-        this.socket.once('response-destroy', onResponseDestroy);
-
-        this._listeners = { onResponseHeader, onResponseChunk, onResponseEnd, onResponseDestroy };
+    pause(): void {
+        this.paused = true
     }
 
-    private cleanup() {
-        if (this._listeners && !this.destroyed) {
-            this.destroyed = true;
-            this.socket.off('response-headers', this._listeners.onResponseHeader);
-            this.socket.off('response-chunk', this._listeners.onResponseChunk);
-            this.socket.off('response-end', this._listeners.onResponseEnd);
-            this.socket.off('response-destroy', this._listeners.onResponseDestroy);
-            this._listeners = null;
+    resume(): void {
+        this.paused = false
+        // Flush buffered chunks
+        while (this.buffer.length > 0 && !this.paused) {
+            const chunk = this.buffer.shift()
+            this.emit('data', chunk)
         }
-        this.removeAllListeners();
     }
 
     destroy() {
-        if (!this.destroyed) {
-            this.cleanup();
-            this.socket.emit('client-destroy', this.requestId);
-        }
+        this.tunnelRequest.destroy()
+        this.buffer = []
+        this.removeAllListeners()
     }
 }
 
-export { RequestChannel }
+export { createTunnelRequest, RequestChannel }

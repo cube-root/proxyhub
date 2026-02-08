@@ -22,19 +22,6 @@ export const portNumberCustomValidationForCommander = (value: string): number =>
 };
 
 /**
- * Print connection information to the console
- * @param data - URL information from the server
- */
-export const printInfo = (data: UrlInfo): void => {
-    console.log('\n' + chalk.green.bold('🎉 Tunnel established successfully!'));
-    console.log(chalk.cyan.bold('📡 Your local service is now accessible at:'));
-    console.log(chalk.yellow.bold(`   ${data.url}`));
-    console.log(chalk.gray(`   -> forwarding to localhost:${data.localPort}`));
-    console.log(chalk.gray(`   Connection ID: ${data.id}`));
-    console.log(chalk.green.bold('\n✅ Ready to receive requests...\n'));
-};
-
-/**
  * Print error information to the console
  * @param message - Error message to display
  */

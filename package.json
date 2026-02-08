@@ -19,7 +19,7 @@
     "api-interceptor"
   ],
   "author": "Abhijith V <https://github.com/abhisawesome>",
-  "license": "Modified MIT",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/cube-root/proxyhub/issues"
   },

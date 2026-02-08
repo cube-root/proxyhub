@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
-import { Command, InvalidArgumentError } from 'commander';
+import { Command } from 'commander';
 import * as fs from 'fs';
 import * as url from 'url';
 import * as path from 'path';
+import chalk from 'chalk';
 import { portNumberCustomValidationForCommander } from './utils/index.js';
-import run from './lib/run.js';
+import socketHandler from './lib/socket.js';
 import 'dotenv/config';
 
 // Get package.json version
@@ -23,14 +24,30 @@ program
     .version(version)
     .requiredOption('-p, --port <port>', 'Port number for proxying', portNumberCustomValidationForCommander)
     .option('-d, --debug', 'Enable debug mode', false)
-    // .option('-keep, --keep-history', 'Do not delete history on disconnect');
+    .option('-t, --token <token>', 'Token for tunnel protection');
 
 // Parse command line arguments
 program.parse(process.argv);
 
-// Get parsed options
-const options: ClientInitializationOptions = program.opts();
+// Get parsed options and check for env var fallback
+const parsedOpts = program.opts() as ClientInitializationOptions;
+const options: ClientInitializationOptions = {
+    port: parsedOpts.port,
+    debug: parsedOpts.debug,
+    token: parsedOpts.token || process.env.PROXYHUB_TOKEN
+};
+
+// Startup logging
+console.log('\nStarting ProxyHub Client...');
+console.log('Target:', chalk.cyan(`http://localhost:${options.port}`));
+if (options.token) {
+    console.log('Token protection:', chalk.green('enabled'));
+}
+if (options.debug) {
+    console.log('Debug mode:', chalk.green('enabled'));
+}
+console.log('');
 
 // Start the ProxyHub client
-run(options);
+socketHandler(options);
 

@@ -7,11 +7,6 @@ declare global {
         }
     }
 
-    interface TunnelSocketObject {
-        id: String,
-        socket: Socket
-    }
-
     interface TunnelMapping {
         stableTunnelId: string;
         socketId: string;
@@ -19,5 +14,6 @@ declare global {
         port: number;
         createdAt: Date;
         lastActivity: Date;
+        token?: string | null;
     }
 }

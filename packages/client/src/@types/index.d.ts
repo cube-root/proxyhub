@@ -2,7 +2,7 @@ declare global {
     interface ClientInitializationOptions {
         port: number;
         debug?: boolean;
-        keepHistory?: boolean;
+        token?: string;
     }
 
     interface TunnelRequestArgument {
@@ -19,12 +19,6 @@ declare global {
         httpVersion?: string;
     }
 
-    interface UrlInfo {
-        id: string;
-        url: string;
-        localPort: number;
-        active: boolean;
-    }
 }
 
 export {}; 
