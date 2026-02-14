@@ -4,6 +4,9 @@ import { printError, printDebug } from "../utils/index.js";
 import * as http from "http";
 import { ResponseChannel } from "./tunnel.js";
 import * as crypto from "crypto";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 import { Transform, TransformCallback } from "stream";
 import {
     initDb,
@@ -156,17 +159,40 @@ const startTimeoutWarnings = (timeoutConfig: any) => {
     }, 60000); // Check every minute
 };
 
+const TUNNEL_IDS_PATH = path.join(os.homedir(), '.proxyhub', 'tunnel-ids.json');
+
 const generateStableTunnelId = (port: number): string => {
-    const machineInfo = process.env.USER || process.env.USERNAME || 'unknown';
-    const portStr = port.toString();
-    const processId = process.pid.toString();
+    const key = String(port);
 
-    const hash = crypto.createHash('md5')
-        .update(`${machineInfo}-${portStr}-${processId}`)
-        .digest('hex')
-        .substring(0, 12);
+    // Try to load existing IDs
+    try {
+        const data = JSON.parse(fs.readFileSync(TUNNEL_IDS_PATH, 'utf-8'));
+        if (data[key] && typeof data[key] === 'string') {
+            return data[key];
+        }
+    } catch {
+        // File doesn't exist or is invalid — generate new
+    }
 
-    return hash;
+    const id = crypto.randomBytes(16).toString('hex');
+
+    // Persist for stability across restarts
+    try {
+        const dir = path.dirname(TUNNEL_IDS_PATH);
+        fs.mkdirSync(dir, { recursive: true });
+        let existing: Record<string, string> = {};
+        try {
+            existing = JSON.parse(fs.readFileSync(TUNNEL_IDS_PATH, 'utf-8'));
+        } catch {
+            // Fresh file
+        }
+        existing[key] = id;
+        fs.writeFileSync(TUNNEL_IDS_PATH, JSON.stringify(existing, null, 2));
+    } catch {
+        // Non-fatal — ID still works for this session
+    }
+
+    return id;
 };
 
 const socketHandler = (option: ClientInitializationOptions) => {
@@ -188,13 +214,13 @@ const socketHandler = (option: ClientInitializationOptions) => {
     }
 
     const socketPath = process?.env?.PROXYHUB_SOCKET_PATH ?? "/socket.io";
-    const clientSecret = crypto.randomBytes(32).toString("hex");
+    const clientSecret = process.env.PROXYHUB_AUTH_KEY || crypto.randomBytes(32).toString("hex");
 
     const socket = io(socketUrl, {
         path: socketPath,
         transports: ["websocket"],
         secure: !socketUrl.includes("localhost"),
-        rejectUnauthorized: false,
+        rejectUnauthorized: !process.env.PROXYHUB_ALLOW_INSECURE,
         withCredentials: true,
         reconnection: true,
         reconnectionAttempts: 3,

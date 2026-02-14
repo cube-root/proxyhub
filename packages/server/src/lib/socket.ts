@@ -2,6 +2,7 @@
 import { Server } from "socket.io";
 import http from 'http';
 import os from 'os';
+import crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { debug } from '../utils/debug';
@@ -18,7 +19,9 @@ class SocketHandler {
         this.io = new Server(httpServer, {
             path: process?.env?.SOCKET_PATH ?? "/socket.io",
             cors: {
-                origin: "*",
+                origin: process.env.ALLOWED_ORIGINS
+                    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+                    : "*",
                 methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
             },
         });
@@ -175,6 +178,55 @@ class SocketHandler {
     }
 
     start() {
+        // Socket.IO connection rate limiting
+        const socketMaxPerMinute = parseInt(process.env.SOCKET_MAX_CONNECTIONS_PER_MINUTE || '30', 10);
+        const connectionCounts = new Map<string, { count: number; resetAt: number }>();
+
+        // Cleanup stale entries every 5 minutes
+        const cleanupInterval = setInterval(() => {
+            const now = Date.now();
+            for (const [ip, entry] of connectionCounts) {
+                if (now > entry.resetAt) {
+                    connectionCounts.delete(ip);
+                }
+            }
+        }, 5 * 60 * 1000);
+        cleanupInterval.unref();
+
+        this.io.use((socket, next) => {
+            const ip = socket.handshake.address;
+            const now = Date.now();
+            const entry = connectionCounts.get(ip);
+
+            if (!entry || now > entry.resetAt) {
+                connectionCounts.set(ip, { count: 1, resetAt: now + 60000 });
+                return next();
+            }
+
+            entry.count++;
+            if (entry.count > socketMaxPerMinute) {
+                return next(new Error('Too many connections. Please try again later.'));
+            }
+            next();
+        });
+
+        // Socket.IO authentication middleware
+        const authKey = process.env.SOCKET_AUTH_KEY;
+        if (authKey) {
+            this.io.use((socket, next) => {
+                const clientSecret = socket.handshake.auth?.clientSecret;
+                if (!clientSecret || typeof clientSecret !== 'string') {
+                    return next(new Error('Authentication required'));
+                }
+                const keyBuf = Buffer.from(authKey);
+                const secretBuf = Buffer.from(clientSecret);
+                if (keyBuf.length !== secretBuf.length || !crypto.timingSafeEqual(keyBuf, secretBuf)) {
+                    return next(new Error('Authentication failed'));
+                }
+                next();
+            });
+        }
+
         this.io.on("connection", (socket) => {
             console.log("Socket connected:", socket.id);
             this.setConnectionTimeout(socket);

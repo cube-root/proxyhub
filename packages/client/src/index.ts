@@ -28,13 +28,17 @@ program
     .option('-t, --token <token>', 'Token for tunnel protection')
     .option('-i, --inspect', 'Enable request inspector', false)
     .option('-m, --mock', 'Enable mock mode', false)
-    .option('--inspect-port <port>', 'Port for inspector UI', parseInt);
+    .option('--inspect-port <port>', 'Port for inspector UI', parseInt)
+    .option('-k, --auth-key <key>', 'Authentication key for the ProxyHub server');
 
 // Parse command line arguments
 program.parse(process.argv);
 
 // Get parsed options and check for env var fallback
-const parsedOpts = program.opts() as ClientInitializationOptions & { port?: number };
+const parsedOpts = program.opts() as ClientInitializationOptions & { port?: number; authKey?: string };
+if (parsedOpts.authKey) {
+    process.env.PROXYHUB_AUTH_KEY = parsedOpts.authKey;
+}
 const options: ClientInitializationOptions = {
     port: parsedOpts.port,
     debug: parsedOpts.debug,
