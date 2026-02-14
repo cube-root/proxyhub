@@ -1,166 +1,104 @@
-# ProxyHub Client CLI
+# ProxyHub
 
-A command-line tool for tunneling localhost to the internet.
+[![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
+[![npm](https://img.shields.io/npm/v/proxyhub)](https://www.npmjs.com/package/proxyhub)
 
-## Installation
-
-```bash
-npm install
-```
+Expose localhost to the internet. Self-hostable ngrok alternative.
 
 ## Quick Start
 
-1. **Install dependencies:**
-
-   ```bash
-   npm install
-   ```
-
-2. **Start the example server** (runs on port 3000):
-
-   ```bash
-   npm run example-server
-   ```
-
-3. **In another terminal, run ProxyHub client:**
-
-   ```bash
-   npm run dev
-   ```
-
-4. **Access your local server** via the public URL provided by ProxyHub!
-
-### Alternative: Use your own server
-
-If you have your own server running, you can tunnel it directly:
-
 ```bash
-# For a server running on port 8080
-npm run dev:custom -- -p 8080 -d
+npx proxyhub -p 3000
 ```
 
-## Development Commands
+That's it! Your local server running on port 3000 is now accessible from the internet.
 
-### Quick Start Development
+## Installation
 
-```bash
-npm run dev
-```
-
-- Runs the client targeting localhost:3000 with debug mode enabled
-- Uses nodemon for auto-restart on file changes
-- Uses tsx for fast TypeScript execution
-- Connects to the default ProxyHub server
-
-### Custom Development
+### Using npx (no install needed)
 
 ```bash
-npm run dev:custom -- -p 8080 -d --keep-history
+npx proxyhub -p <port>
 ```
 
-- Pass custom arguments after the `--`
-- Example above runs on port 8080 with debug and keep-history enabled
-
-### Test Command
+### Global install
 
 ```bash
-npm run test
+npm install -g proxyhub
+proxyhub -p <port>
 ```
-
-- Runs the client on port 8080 with debug mode and keep-history enabled
-- Good for testing different configurations
 
 ## Usage
 
-### Basic Usage
+### Basic
 
 ```bash
 proxyhub -p 3000
 ```
 
-### With Options
+### Token Protection
+
+Secure your tunnel so only requests with the correct token can access it:
 
 ```bash
-proxyhub -p 3000 -d --keep-history
+proxyhub -p 3000 --token mysecrettoken
 ```
 
-### Command Line Options
+Requests must then include the `X-Proxy-Token` header:
 
-| Option                  | Description                         | Required |
-| ----------------------- | ----------------------------------- | -------- |
-| `-p, --port <port>`     | Port number for proxying            | Yes      |
-| `-d, --debug`           | Enable debug mode                   | No       |
-| `-keep, --keep-history` | Do not delete history on disconnect | No       |
-| `-v, --version`         | Show version number                 | No       |
-| `-h, --help`            | Show help                           | No       |
+```bash
+curl -H "X-Proxy-Token: mysecrettoken" https://your-tunnel.proxyhub.cloud/
+```
 
-## How it Works
+### Debug Mode
 
-1. **Start Local Server**: Make sure your local application is running (e.g., on port 3000)
-2. **Run ProxyHub Client**: `proxyhub -p 3000`
-3. **Get Public URL**: The client will connect to the ProxyHub server and provide a public URL
-4. **Access Remotely**: Use the public URL to access your local application from anywhere
+```bash
+proxyhub -p 3000 --debug
+```
+
+## CLI Options
+
+| Option | Description |
+|--------|-------------|
+| `-p, --port <port>` | Port number to proxy (required) |
+| `-t, --token <token>` | Token for tunnel protection |
+| `-d, --debug` | Enable debug mode |
+| `-keep, --keep-history` | Keep request history on disconnect |
+| `-V, --version` | Output version number |
+| `-h, --help` | Display help |
+
+## Self-Hosted Server
+
+Connect to your own ProxyHub server using environment variables:
+
+```bash
+PROXYHUB_SOCKET_URL=https://your-server.com proxyhub -p 3000
+```
+
+See the [self-hosting guide](https://github.com/cube-root/proxyhub#self-hosting) for server setup instructions.
 
 ## Environment Variables
 
-| Variable               | Description         | Default                          |
-| ---------------------- | ------------------- | -------------------------------- |
-| `PROXYHUB_SOCKET_URL`  | ProxyHub server URL | `https://connect.proxyhub.cloud` |
-| `PROXYHUB_SOCKET_PATH` | Socket.IO path      | `/socket.io`                     |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PROXYHUB_SOCKET_URL` | `https://connect.proxyhub.cloud` | ProxyHub server URL |
+| `PROXYHUB_SOCKET_PATH` | `/socket.io` | Socket.IO path |
+| `PROXYHUB_TOKEN` | - | Token for tunnel protection |
 
-## Development Setup
+## How It Works
 
-1. Install dependencies:
+1. Client connects to the ProxyHub server via WebSocket
+2. Server assigns a unique public URL (e.g., `https://abc123.proxyhub.cloud`)
+3. Incoming requests to that URL are forwarded through the WebSocket to the client
+4. Client proxies them to your local server and streams responses back
 
-   ```bash
-   npm install
-   ```
+## Links
 
-2. Start development with auto-reload:
+- [GitHub](https://github.com/cube-root/proxyhub)
+- [Documentation](https://proxyhub.app)
+- [Self-Hosting Guide](https://github.com/cube-root/proxyhub#self-hosting)
 
-   ```bash
-   npm run dev
-   ```
+## License
 
-3. Build for production:
-
-   ```bash
-   npm run build
-   ```
-
-4. Test the built version:
-   ```bash
-   npm start
-   ```
-
-## Examples
-
-### Web Development
-
-```bash
-# Start your web server on port 3000
-npm start
-
-# In another terminal, tunnel it
-proxyhub -p 3000
-```
-
-### API Development
-
-```bash
-# Start your API server on port 8080
-python -m http.server 8080
-
-# Tunnel it with debug mode
-proxyhub -p 8080 -d
-```
-
-### Testing Webhooks
-
-```bash
-# Start your webhook handler on port 4000
-node webhook-server.js
-
-# Tunnel it and keep history for debugging
-proxyhub -p 4000 --keep-history
-```
+[MIT](https://github.com/cube-root/proxyhub/blob/main/LICENSE)
