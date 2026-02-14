@@ -40,6 +40,7 @@ const options: ClientInitializationOptions = {
     token: parsedOpts.token || process.env.PROXYHUB_TOKEN,
     inspect: parsedOpts.inspect,
     inspectPort: parsedOpts.inspectPort,
+    version,
 };
 
 // Startup logging

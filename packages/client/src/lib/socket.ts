@@ -211,7 +211,8 @@ const socketHandler = (option: ClientInitializationOptions) => {
             socket.emit('register-tunnel', {
                 stableTunnelId,
                 port: option.port,
-                token: option.token
+                token: option.token,
+                version: option.version,
             });
 
             if (option.debug) {
@@ -271,6 +272,12 @@ const socketHandler = (option: ClientInitializationOptions) => {
         displayTunnelInfo({ ...data, port: option.port, inspectPort });
         if (data.tunnelUrl && option.inspect) {
             setTunnelUrl(data.tunnelUrl);
+        }
+        if (data.updateAvailable) {
+            console.log('');
+            console.log(chalk.yellow.bold(`  Update available: ${option.version || 'unknown'} → ${data.updateAvailable.latest}`));
+            console.log(chalk.yellow(`  Run ${chalk.cyan('npm install -g proxyhub')} or use ${chalk.cyan('npx proxyhub@latest')} to update`));
+            console.log('');
         }
         if (option.debug) {
             printDebug("Tunnel data", data);

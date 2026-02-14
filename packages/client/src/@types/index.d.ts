@@ -5,6 +5,7 @@ declare global {
         token?: string;
         inspect?: boolean;
         inspectPort?: number;
+        version?: string;
     }
 
     interface TunnelRequestArgument {

@@ -1,10 +1,56 @@
 /// <reference path="../@types/index.d.ts" />
 import { Server } from "socket.io";
 import http from 'http';
+import https from 'https';
 import os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
 import { debug } from '../utils/debug';
+
+// Cached latest client version from npm
+let cachedLatestVersion: string | null = null;
+let cacheTimestamp = 0;
+const CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+function fetchLatestClientVersion(): void {
+    const url = 'https://registry.npmjs.org/proxyhub/latest';
+    https.get(url, { timeout: 5000 }, (res) => {
+        let data = '';
+        res.on('data', (chunk: string) => { data += chunk; });
+        res.on('end', () => {
+            try {
+                const parsed = JSON.parse(data);
+                if (parsed.version) {
+                    cachedLatestVersion = parsed.version;
+                    cacheTimestamp = Date.now();
+                    debug('Fetched latest client version from npm:', cachedLatestVersion);
+                }
+            } catch {
+                debug('Failed to parse npm registry response');
+            }
+        });
+    }).on('error', () => {
+        debug('Failed to fetch latest client version from npm');
+    });
+}
+
+function getLatestClientVersion(): string | null {
+    if (!cachedLatestVersion || Date.now() - cacheTimestamp > CACHE_TTL) {
+        fetchLatestClientVersion();
+    }
+    return cachedLatestVersion;
+}
+
+function isOutdated(clientVersion: string, latestVersion: string): boolean {
+    const parse = (v: string) => v.replace(/^v/, '').split('.').map(Number);
+    const c = parse(clientVersion);
+    const l = parse(latestVersion);
+    for (let i = 0; i < 3; i++) {
+        if ((c[i] || 0) < (l[i] || 0)) return true;
+        if ((c[i] || 0) > (l[i] || 0)) return false;
+    }
+    return false;
+}
 
 class SocketHandler {
     private io: Server;
@@ -32,6 +78,9 @@ class SocketHandler {
             console.warn('Could not read package.json version:', error);
             this.version = '1.0.0';
         }
+
+        // Pre-fetch latest client version from npm
+        fetchLatestClientVersion();
     }
 
     private sanitizeSocketId(socketId: string): string {
@@ -179,8 +228,8 @@ class SocketHandler {
             console.log("Socket connected:", socket.id);
             this.setConnectionTimeout(socket);
 
-            socket.on('register-tunnel', (data: { stableTunnelId: string, port: number, token?: string }) => {
-                debug('Registering tunnel:', data.stableTunnelId, 'for socket:', socket.id);
+            socket.on('register-tunnel', (data: { stableTunnelId: string, port: number, token?: string, version?: string }) => {
+                debug('Registering tunnel:', data.stableTunnelId, 'for socket:', socket.id, 'client version:', data.version || 'unknown');
 
                 this.registerTunnel(data.stableTunnelId, socket, data.port, data.token);
 
@@ -191,10 +240,18 @@ class SocketHandler {
                 const timeoutEnabled = timeoutMinutes > 0;
                 const sessionStartTime = Date.now();
 
+                // Check if client needs an update
+                let updateAvailable: { latest: string } | undefined;
+                const latestVersion = getLatestClientVersion();
+                if (data.version && latestVersion && isOutdated(data.version, latestVersion)) {
+                    updateAvailable = { latest: latestVersion };
+                }
+
                 socket.emit('on-connect-tunnel', {
                     id: data.stableTunnelId,
                     ...tunnelInfo,
                     tokenProtected: !!data.token,
+                    updateAvailable,
                     timeout: {
                         minutes: timeoutMinutes,
                         enabled: timeoutEnabled,
