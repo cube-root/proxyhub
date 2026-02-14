@@ -113,6 +113,7 @@ app.use("/", RequestMiddleware, (req, res) => {
         },
         path: req.url,
         body: req.body,
+        clientIp: req.ip || req.socket?.remoteAddress || 'unknown',
     });
 
     const timeoutMs = 30000;

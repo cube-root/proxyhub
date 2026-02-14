@@ -2,8 +2,33 @@ import { io, Socket } from "socket.io-client";
 import chalk from "chalk";
 import { printError, printDebug } from "../utils/index.js";
 import * as http from "http";
+import { Transform, TransformCallback } from "stream";
 import { ResponseChannel } from "./tunnel.js";
 import * as crypto from "crypto";
+import { initDb, closeDb, clearLogs, insertRequest, updateResponseHeaders, completeRequest, updateRequestError } from "./db.js";
+
+const MAX_BODY_CAPTURE = 512 * 1024; // 512 KB
+
+class ByteCounter extends Transform {
+    public byteCount = 0;
+    private bodyChunks: Buffer[] = [];
+    private capturing = true;
+    _transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback): void {
+        this.byteCount += chunk.length;
+        if (this.capturing) {
+            this.bodyChunks.push(chunk);
+            if (this.byteCount > MAX_BODY_CAPTURE) {
+                this.capturing = false;
+            }
+        }
+        this.push(chunk);
+        callback();
+    }
+    getBody(): string {
+        const buf = Buffer.concat(this.bodyChunks);
+        return buf.toString('utf-8').substring(0, MAX_BODY_CAPTURE);
+    }
+}
 
 // Global state for timeout tracking
 let timeoutInterval: NodeJS.Timeout | null = null;
@@ -60,6 +85,10 @@ const displayTunnelInfo = (data: any) => {
 
     if (data.tokenProtected) {
         console.log(formatLine('Token Protection', 'Enabled (X-Proxy-Token header required)', chalk.green));
+    }
+
+    if (data.inspectPort) {
+        console.log(formatLine('Inspector', `http://localhost:${data.inspectPort}`, chalk.cyan));
     }
 
     if (data.timeout?.enabled) {
@@ -129,6 +158,11 @@ const generateStableTunnelId = (port: number): string => {
 
 const socketHandler = (option: ClientInitializationOptions) => {
     const stableTunnelId = generateStableTunnelId(option.port);
+
+    if (option.inspect) {
+        initDb();
+        clearLogs();
+    }
 
     let socketUrl = (
         process?.env?.SOCKET_URL ?? "https://connect.proxyhub.cloud"
@@ -227,7 +261,7 @@ const socketHandler = (option: ClientInitializationOptions) => {
     });
 
     socket.on("on-connect-tunnel", (data) => {
-        displayTunnelInfo({ ...data, port: option.port });
+        displayTunnelInfo({ ...data, port: option.port, inspectPort: option.inspect ? (option.inspectPort || option.port + 1000) : undefined });
         if (option.debug) {
             printDebug("Tunnel data", data);
         }
@@ -246,6 +280,20 @@ const socketHandler = (option: ClientInitializationOptions) => {
                 method: request.method,
                 path: request.path,
                 port: request.port
+            });
+        }
+
+        let requestStartTime: number | undefined;
+        if (option.inspect) {
+            requestStartTime = performance.now();
+            insertRequest({
+                id: requestId,
+                method: requestData.method,
+                path: requestData.path,
+                headers: JSON.stringify(requestData.headers),
+                body: requestData.body ? (typeof requestData.body === 'object' ? JSON.stringify(requestData.body) : String(requestData.body)) : undefined,
+                client_ip: requestData.clientIp,
+                created_at: new Date().toISOString(),
             });
         }
 
@@ -270,6 +318,9 @@ const socketHandler = (option: ClientInitializationOptions) => {
 
         proxyRequest.on("timeout", () => {
             printError("Request timeout after 5 seconds");
+            if (option.inspect) {
+                updateRequestError({ id: requestId, error: 'Request timeout after 5 seconds' });
+            }
             proxyRequest.destroy();
             if (option.debug) {
                 printDebug("Request timeout", { path: request.path });
@@ -278,6 +329,9 @@ const socketHandler = (option: ClientInitializationOptions) => {
 
         proxyRequest.once("error", (error: Error) => {
             printError(`Request failed: ${error.message}`);
+            if (option.inspect) {
+                updateRequestError({ id: requestId, error: error.message });
+            }
             if (option.debug) {
                 printDebug("Request error", error);
             }
@@ -299,23 +353,52 @@ const socketHandler = (option: ClientInitializationOptions) => {
                 statusColor(response.statusCode?.toString() || '')
             );
 
+            const responseHeadersObj = Object.fromEntries(
+                Object.entries(response.headers).map(([key, value]) => [
+                    key,
+                    Array.isArray(value) ? value.join(', ') : value || ''
+                ])
+            );
+
             responseChannel.sendHeaders({
                 statusCode: response.statusCode,
                 statusMessage: response.statusMessage,
-                headers: Object.fromEntries(
-                    Object.entries(response.headers).map(([key, value]) => [
-                        key,
-                        Array.isArray(value) ? value.join(', ') : value || ''
-                    ])
-                ),
+                headers: responseHeadersObj,
                 httpVersion: response.httpVersion,
             });
 
+            if (option.inspect) {
+                updateResponseHeaders({
+                    id: requestId,
+                    status_code: response.statusCode,
+                    status_message: response.statusMessage,
+                    response_headers: JSON.stringify(responseHeadersObj),
+                    http_version: response.httpVersion,
+                });
+            }
+
             // Use pipe for automatic backpressure handling
-            response.pipe(responseChannel);
+            if (option.inspect) {
+                const counter = new ByteCounter();
+                response.pipe(counter).pipe(responseChannel);
+                counter.on('end', () => {
+                    completeRequest({
+                        id: requestId,
+                        response_body_size: counter.byteCount,
+                        response_body: counter.getBody(),
+                        duration_ms: Math.round(performance.now() - requestStartTime!),
+                        completed_at: new Date().toISOString(),
+                    });
+                });
+            } else {
+                response.pipe(responseChannel);
+            }
 
             response.on("error", (error: Error) => {
                 printError(`Response error: ${error.message}`);
+                if (option.inspect) {
+                    updateRequestError({ id: requestId, error: error.message });
+                }
                 responseChannel.destroy(error);
                 if (option.debug) {
                     printDebug("Response error", error);
@@ -333,6 +416,9 @@ const socketHandler = (option: ClientInitializationOptions) => {
     // Graceful shutdown handlers
     const handleShutdown = () => {
         console.log(chalk.yellow.bold('\nShutting down ProxyHub client...'));
+        if (option.inspect) {
+            closeDb();
+        }
         cleanup(socket);
         process.exit(0);
     };
