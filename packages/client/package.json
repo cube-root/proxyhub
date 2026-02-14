@@ -1,6 +1,6 @@
 {
   "name": "proxyhub",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "description": "ProxyHub CLI - Test your APIs with ease",
   "type": "module",
   "main": "dist/index.js",
