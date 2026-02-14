@@ -7,6 +7,7 @@ interface RequestData {
     headers: object
     path: string
     body: object
+    clientIp?: string
 }
 
 interface TunnelRequestHandlers {

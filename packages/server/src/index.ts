@@ -63,7 +63,8 @@ app.use("/", RequestMiddleware, (req, res) => {
         debug('No tunnel mapping found for ID:', socketId);
         res.status(404).json({
             error: 'Tunnel not found',
-            message: 'No active tunnel found for this URL. Please check your connection.'
+            message: 'No active tunnel found for this URL. Please check your connection.',
+            docs: 'https://proxyhub.app'
         });
         return;
     }
@@ -113,6 +114,7 @@ app.use("/", RequestMiddleware, (req, res) => {
         },
         path: req.url,
         body: req.body,
+        clientIp: req.ip || req.socket?.remoteAddress || 'unknown',
     });
 
     const timeoutMs = 30000;

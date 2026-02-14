@@ -37,6 +37,28 @@ proxyhub -p <port>
 proxyhub -p 3000
 ```
 
+### Request Inspector
+
+Enable the built-in inspector to monitor all proxied requests and responses through a local web UI:
+
+```bash
+# Enable inspector (opens on port + 1000 by default)
+proxyhub -p 3000 --inspect
+
+# Custom inspector port
+proxyhub -p 3000 --inspect --inspect-port 9000
+```
+
+Once enabled, open the inspector URL shown in the terminal (e.g., `http://localhost:4000`) to view requests in real-time.
+
+Inspector features:
+- Filter by method, status code, and path
+- View full request/response headers and bodies
+- Resend captured requests with one click
+- **API Composer** — click "Compose" to build requests from scratch, or "Edit in Composer" on any captured request to pre-fill the form with its method, URL, headers, and body
+- **cURL export** — expand the cURL section on any request detail page to get a ready-to-copy command
+- Light/dark theme
+
 ### Token Protection
 
 Secure your tunnel so only requests with the correct token can access it:
@@ -63,8 +85,9 @@ proxyhub -p 3000 --debug
 |--------|-------------|
 | `-p, --port <port>` | Port number to proxy (required) |
 | `-t, --token <token>` | Token for tunnel protection |
+| `-i, --inspect` | Enable request inspector UI |
+| `--inspect-port <port>` | Port for inspector UI (default: port + 1000) |
 | `-d, --debug` | Enable debug mode |
-| `-keep, --keep-history` | Keep request history on disconnect |
 | `-V, --version` | Output version number |
 | `-h, --help` | Display help |
 
