@@ -1,6 +1,6 @@
 {
   "name": "proxyhub",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "ProxyHub CLI - Test your APIs with ease",
   "type": "module",
   "main": "dist/index.js",
@@ -16,7 +16,13 @@
     "example-server": "node example-server.js",
     "prepublish": "npm run build"
   },
-  "keywords": ["proxy", "tunnel", "cli", "api", "testing"],
+  "keywords": [
+    "proxy",
+    "tunnel",
+    "cli",
+    "api",
+    "testing"
+  ],
   "author": "",
   "license": "MIT",
   "devDependencies": {
