@@ -23,28 +23,51 @@ program
     .name('ProxyHub')
     .description("Test your API's with ease - Tunnel localhost to the internet")
     .version(version)
-    .requiredOption('-p, --port <port>', 'Port number for proxying', portNumberCustomValidationForCommander)
+    .option('-p, --port <port>', 'Port number for proxying', portNumberCustomValidationForCommander)
     .option('-d, --debug', 'Enable debug mode', false)
     .option('-t, --token <token>', 'Token for tunnel protection')
     .option('-i, --inspect', 'Enable request inspector', false)
+    .option('-m, --mock', 'Enable mock mode', false)
     .option('--inspect-port <port>', 'Port for inspector UI', parseInt);
 
 // Parse command line arguments
 program.parse(process.argv);
 
 // Get parsed options and check for env var fallback
-const parsedOpts = program.opts() as ClientInitializationOptions;
+const parsedOpts = program.opts() as ClientInitializationOptions & { port?: number };
 const options: ClientInitializationOptions = {
     port: parsedOpts.port,
     debug: parsedOpts.debug,
     token: parsedOpts.token || process.env.PROXYHUB_TOKEN,
     inspect: parsedOpts.inspect,
     inspectPort: parsedOpts.inspectPort,
+    mock: parsedOpts.mock,
 };
+
+// Validate: need either port or mock mode
+if (!options.port && !options.mock) {
+    console.error(chalk.red('Error: Either --port or --mock is required.'));
+    console.error(chalk.gray('  Use --port <port> to proxy to a local server'));
+    console.error(chalk.gray('  Use --mock for pure mock mode (no local server needed)'));
+    process.exit(1);
+}
+
+// Mock and inspect are co-dependent — enabling either enables both
+if (options.mock || options.inspect) {
+    options.mock = true;
+    options.inspect = true;
+}
 
 // Startup logging
 console.log('\nStarting ProxyHub Client...');
-console.log('Target:', chalk.cyan(`http://localhost:${options.port}`));
+if (options.port) {
+    console.log('Target:', chalk.cyan(`http://localhost:${options.port}`));
+}
+if (options.mock && options.port) {
+    console.log('Mode:', chalk.magenta('hybrid (mock + proxy)'));
+} else if (options.mock) {
+    console.log('Mode:', chalk.magenta('pure mock (no local server)'));
+}
 if (options.token) {
     console.log('Token protection:', chalk.green('enabled'));
 }
@@ -61,7 +84,6 @@ socketHandler(options);
 
 // Start inspector if enabled
 if (options.inspect) {
-    const inspectPort = options.inspectPort || options.port + 1000;
-    startInspector(inspectPort, options.port);
+    const inspectPort = options.inspectPort || (options.port ? options.port + 1000 : 3001);
+    startInspector(inspectPort, options.port, { mock: options.mock });
 }
-

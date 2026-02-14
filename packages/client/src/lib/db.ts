@@ -40,6 +40,23 @@ export function initDb(): void {
         CREATE INDEX IF NOT EXISTS idx_requests_method ON requests(method);
         CREATE INDEX IF NOT EXISTS idx_requests_status_code ON requests(status_code);
         CREATE INDEX IF NOT EXISTS idx_requests_path ON requests(path);
+
+        CREATE TABLE IF NOT EXISTS mocks (
+            id          TEXT PRIMARY KEY,
+            method      TEXT NOT NULL DEFAULT '*',
+            path        TEXT NOT NULL,
+            path_type   TEXT NOT NULL DEFAULT 'exact',
+            status_code INTEGER NOT NULL DEFAULT 200,
+            headers     TEXT NOT NULL DEFAULT '{}',
+            body        TEXT,
+            delay_ms    INTEGER NOT NULL DEFAULT 0,
+            priority    INTEGER NOT NULL DEFAULT 0,
+            enabled     INTEGER NOT NULL DEFAULT 1,
+            description TEXT,
+            created_at  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_mocks_enabled ON mocks(enabled);
     `);
 
     // Migrate: add response_body column if missing (existing DBs)
@@ -57,7 +74,7 @@ export function closeDb(): void {
     }
 }
 
-function getDb(): Database.Database {
+export function getDb(): Database.Database {
     if (!db) throw new Error('Database not initialized. Call initDb() first.');
     return db;
 }

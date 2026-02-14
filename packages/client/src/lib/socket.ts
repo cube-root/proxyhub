@@ -15,6 +15,9 @@ import {
     updateRequestError,
 } from "./db.js";
 import { setTunnelUrl } from "./inspector.js";
+import { getAllEnabledMocks } from "./mock-db.js";
+import { findMockMatch } from "./mock-matcher.js";
+import { serveMockResponse, serveNoMockResponse } from "./mock-handler.js";
 
 const MAX_BODY_CAPTURE = 512 * 1024; // 512KB
 
@@ -97,6 +100,10 @@ const displayTunnelInfo = (data: any) => {
         console.log(formatLine('Inspector', `http://localhost:${data.inspectPort}`, chalk.magenta));
     }
 
+    if (data.mock && data.inspectPort) {
+        console.log(formatLine('Mock Manager', `http://localhost:${data.inspectPort}/mocks`, chalk.magenta));
+    }
+
     if (data.timeout?.enabled) {
         const expirationTime = formatExpirationTime(data.timeout.sessionStartTime, data.timeout.durationMs);
         console.log(formatLine('Session Timeout', `${data.timeout.minutes} min (expires ${expirationTime})`, chalk.yellow));
@@ -163,12 +170,14 @@ const generateStableTunnelId = (port: number): string => {
 };
 
 const socketHandler = (option: ClientInitializationOptions) => {
-    if (option.inspect) {
+    if (option.inspect || option.mock) {
         initDb();
-        clearLogs();
+        if (option.inspect) {
+            clearLogs();
+        }
     }
 
-    const stableTunnelId = generateStableTunnelId(option.port);
+    const stableTunnelId = generateStableTunnelId(option.port || 0);
 
     let socketUrl = (
         process?.env?.PROXYHUB_SOCKET_URL ?? "https://connect.proxyhub.cloud"
@@ -210,7 +219,7 @@ const socketHandler = (option: ClientInitializationOptions) => {
 
             socket.emit('register-tunnel', {
                 stableTunnelId,
-                port: option.port,
+                port: option.port || 0,
                 token: option.token
             });
 
@@ -267,8 +276,8 @@ const socketHandler = (option: ClientInitializationOptions) => {
     });
 
     socket.on("on-connect-tunnel", (data) => {
-        const inspectPort = option.inspect ? (option.inspectPort || option.port + 1000) : undefined;
-        displayTunnelInfo({ ...data, port: option.port, inspectPort });
+        const inspectPort = option.inspect ? (option.inspectPort || (option.port ? option.port + 1000 : 3001)) : undefined;
+        displayTunnelInfo({ ...data, port: option.port, inspectPort, mock: option.mock });
         if (data.tunnelUrl && option.inspect) {
             setTunnelUrl(data.tunnelUrl);
         }
@@ -280,7 +289,7 @@ const socketHandler = (option: ClientInitializationOptions) => {
     socket.on("tunnel-request", (requestId: string, requestData: TunnelRequestArgument) => {
         const request = {
             ...requestData,
-            port: option.port,
+            port: option.port || 0,
             hostname: 'localhost',
         };
 
@@ -310,6 +319,25 @@ const socketHandler = (option: ClientInitializationOptions) => {
                 client_ip: requestData.clientIp || undefined,
                 created_at: new Date().toISOString(),
             });
+        }
+
+        // Mock interception
+        if (option.mock) {
+            const enabledMocks = getAllEnabledMocks();
+            const match = findMockMatch(enabledMocks, request.method, request.path);
+
+            if (match) {
+                serveMockResponse(socket, requestId, match, option, requestData, startTime);
+                return;
+            }
+
+            // No match and no port — return 404
+            if (!option.port) {
+                serveNoMockResponse(socket, requestId, option, requestData, startTime);
+                return;
+            }
+
+            // No match but port exists — fall through to normal proxy
         }
 
         const proxyRequest = http.request({
@@ -443,7 +471,7 @@ const socketHandler = (option: ClientInitializationOptions) => {
     // Graceful shutdown handlers
     const handleShutdown = () => {
         console.log(chalk.yellow.bold('\nShutting down ProxyHub client...'));
-        if (option.inspect) {
+        if (option.inspect || option.mock) {
             closeDb();
         }
         cleanup(socket);

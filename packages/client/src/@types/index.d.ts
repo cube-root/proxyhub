@@ -1,10 +1,11 @@
 declare global {
     interface ClientInitializationOptions {
-        port: number;
+        port?: number;
         debug?: boolean;
         token?: string;
         inspect?: boolean;
         inspectPort?: number;
+        mock?: boolean;
     }
 
     interface TunnelRequestArgument {
@@ -86,6 +87,47 @@ declare global {
         success: number;
         error: number;
         avg_duration_ms: number | null;
+    }
+
+    interface MockDefinition {
+        id: string;
+        method: string;
+        path: string;
+        path_type: 'exact' | 'prefix' | 'regex';
+        status_code: number;
+        headers: string;
+        body: string | null;
+        delay_ms: number;
+        priority: number;
+        enabled: number;
+        description: string | null;
+        created_at: string;
+        updated_at: string;
+    }
+
+    interface MockInsert {
+        method?: string;
+        path: string;
+        path_type?: string;
+        status_code?: number;
+        headers?: string;
+        body?: string;
+        delay_ms?: number;
+        priority?: number;
+        description?: string;
+    }
+
+    interface MockUpdate {
+        method?: string;
+        path?: string;
+        path_type?: string;
+        status_code?: number;
+        headers?: string;
+        body?: string;
+        delay_ms?: number;
+        priority?: number;
+        enabled?: number;
+        description?: string;
     }
 
 }

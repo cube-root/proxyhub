@@ -20,6 +20,7 @@ That's it! Your local server running on port 3000 is now accessible from the int
 - **Request Inspector** - Built-in web UI to monitor all proxied requests and responses in real-time
 - **API Composer** - Postman-like request builder inside the inspector to craft and send HTTP requests
 - **cURL Export** - Generate copy-ready cURL commands from any captured request
+- **Mock Mode** - Define mock responses for API paths without a running backend, with a web UI to manage mocks
 - **Token Protection** - Secure your tunnels with authentication tokens
 - **Self-Hostable** - Run your own ProxyHub server
 - **Session Timeouts** - Configurable session duration limits
@@ -74,6 +75,31 @@ Inspector features:
 - **cURL export** — expand the cURL section on any request detail page to get a ready-to-copy command
 - Light/dark theme
 
+### Mock Mode
+
+Define mock API responses without needing a real backend server. Mock mode includes a web UI for managing mocks and supports exact, prefix, and regex path matching.
+
+```bash
+# Pure mock mode (no local server needed)
+proxyhub --mock
+
+# Hybrid mode (mocked paths return mock data, others proxy to localhost)
+proxyhub --mock -p 3000
+
+# Inspector automatically enables mock mode
+proxyhub -p 3000 --inspect
+```
+
+Once running, open the Mock Manager URL shown in the terminal (e.g., `http://localhost:3001/mocks`) to create and manage mocks.
+
+Mock features:
+- **Pure mock mode** — no local server required, define all responses via the UI
+- **Hybrid mode** — combine mocks with a real backend; mocked paths return mock data, non-mocked paths proxy normally
+- **Path matching** — exact, prefix, or regex matching with configurable priority
+- **Response customization** — set status codes, headers, body, and response delay
+- **Inspector integration** — mocked requests appear in the inspector with a `MOCK` badge
+- Enable/disable individual mocks without deleting them
+
 ### Token Protection
 
 Secure your tunnel so only requests with the correct token can access it:
@@ -96,13 +122,16 @@ curl -H "X-Proxy-Token: mysecrettoken" https://your-tunnel.proxyhub.cloud/
 
 | Option | Description |
 |--------|-------------|
-| `-p, --port <port>` | Port number to proxy (required) |
+| `-p, --port <port>` | Port number to proxy |
+| `-m, --mock` | Enable mock mode |
 | `-t, --token <token>` | Token for tunnel protection |
 | `-i, --inspect` | Enable request inspector UI |
 | `--inspect-port <port>` | Port for inspector UI (default: port + 1000) |
 | `-d, --debug` | Enable debug mode |
 | `-V, --version` | Output version number |
 | `-h, --help` | Display help |
+
+Either `--port` or `--mock` is required. Using `--inspect` automatically enables mock mode.
 
 ## Self-Hosting
 
