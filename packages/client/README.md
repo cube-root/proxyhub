@@ -113,6 +113,7 @@ proxyhub -p 3000 --debug
 | `-t, --token <token>` | Token for tunnel protection |
 | `-i, --inspect` | Enable request inspector UI |
 | `--inspect-port <port>` | Port for inspector UI (default: port + 1000) |
+| `-k, --auth-key <key>` | Authentication key for the ProxyHub server |
 | `-d, --debug` | Enable debug mode |
 | `-V, --version` | Output version number |
 | `-h, --help` | Display help |
@@ -136,6 +137,8 @@ See the [self-hosting guide](https://github.com/cube-root/proxyhub#self-hosting)
 | `PROXYHUB_SOCKET_URL` | `https://connect.proxyhub.cloud` | ProxyHub server URL |
 | `PROXYHUB_SOCKET_PATH` | `/socket.io` | Socket.IO path |
 | `PROXYHUB_TOKEN` | - | Token for tunnel protection |
+| `PROXYHUB_AUTH_KEY` | - | Authentication key for the server |
+| `PROXYHUB_ALLOW_INSECURE` | - | Allow self-signed TLS certificates |
 
 ## How It Works
 
@@ -143,6 +146,35 @@ See the [self-hosting guide](https://github.com/cube-root/proxyhub#self-hosting)
 2. Server assigns a unique public URL (e.g., `https://abc123.proxyhub.cloud`)
 3. Incoming requests to that URL are forwarded through the WebSocket to the client
 4. Client proxies them to your local server and streams responses back
+
+## Security
+
+### Server Authentication
+
+If the ProxyHub server requires authentication, provide the shared key:
+
+```bash
+proxyhub -p 3000 --auth-key your-secret-key
+
+# Or via environment variable
+PROXYHUB_AUTH_KEY=your-secret-key proxyhub -p 3000
+```
+
+### TLS Certificate Verification
+
+TLS certificate verification is enabled by default. To connect to servers with self-signed certificates:
+
+```bash
+PROXYHUB_ALLOW_INSECURE=1 proxyhub -p 3000
+```
+
+### Tunnel IDs
+
+Tunnel IDs are cryptographically random and persisted in `~/.proxyhub/tunnel-ids.json` for stability across restarts.
+
+The server also enforces rate limits: 5000 HTTP requests per 10-minute window and 30 WebSocket connections per minute per IP. These are configurable via server environment variables (`RATE_LIMIT_MAX_REQUESTS`, `RATE_LIMIT_WINDOW_MS`, `SOCKET_MAX_CONNECTIONS_PER_MINUTE`).
+
+See the [SECURITY.md](https://github.com/cube-root/proxyhub/blob/main/SECURITY.md) for full security documentation.
 
 ## Links
 

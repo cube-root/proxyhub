@@ -1135,8 +1135,18 @@ export function startInspector(port: number, targetPort: number | undefined, opt
     mockEnabled = options?.mock || false;
     const app = express();
 
-    app.use((_, res, next) => {
-        res.header('Access-Control-Allow-Origin', '*');
+    app.use((req, res, next) => {
+        const origin = req.headers.origin;
+        if (origin) {
+            try {
+                const host = new URL(origin).hostname;
+                if (host === 'localhost' || host === '127.0.0.1') {
+                    res.header('Access-Control-Allow-Origin', origin);
+                }
+            } catch {
+                // Invalid origin — don't set CORS header
+            }
+        }
         res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
         res.header('Access-Control-Allow-Headers', 'Content-Type');
         next();

@@ -127,6 +127,7 @@ curl -H "X-Proxy-Token: mysecrettoken" https://your-tunnel.proxyhub.cloud/
 | `-t, --token <token>` | Token for tunnel protection |
 | `-i, --inspect` | Enable request inspector UI |
 | `--inspect-port <port>` | Port for inspector UI (default: port + 1000) |
+| `-k, --auth-key <key>` | Authentication key for the ProxyHub server |
 | `-d, --debug` | Enable debug mode |
 | `-V, --version` | Output version number |
 | `-h, --help` | Display help |
@@ -182,6 +183,11 @@ PROXYHUB_SOCKET_URL=https://your-server.com proxyhub -p 3000
 | `PROTOCOL` | `https` | Protocol for generated URLs |
 | `SOCKET_PATH` | `/socket.io` | Socket.IO path |
 | `CONNECTION_TIMEOUT_MINUTES` | `30` | Session timeout (0 = unlimited) |
+| `SOCKET_AUTH_KEY` | - | Shared key for socket authentication |
+| `ALLOWED_ORIGINS` | - | Comma-separated list of allowed CORS origins |
+| `RATE_LIMIT_WINDOW_MS` | `600000` | HTTP rate limit window (ms) |
+| `RATE_LIMIT_MAX_REQUESTS` | `5000` | Max HTTP requests per window |
+| `SOCKET_MAX_CONNECTIONS_PER_MINUTE` | `30` | Max socket connections per IP per minute |
 
 ### Client
 
@@ -190,6 +196,8 @@ PROXYHUB_SOCKET_URL=https://your-server.com proxyhub -p 3000
 | `PROXYHUB_SOCKET_URL` | `https://connect.proxyhub.cloud` | ProxyHub server URL |
 | `PROXYHUB_SOCKET_PATH` | `/socket.io` | Socket.IO path |
 | `PROXYHUB_TOKEN` | - | Token for tunnel protection |
+| `PROXYHUB_AUTH_KEY` | - | Authentication key for the server |
+| `PROXYHUB_ALLOW_INSECURE` | - | Allow self-signed TLS certificates |
 
 ## How It Works
 
@@ -205,6 +213,20 @@ Internet Request                     Your Local Server
   ProxyHub Server  <--WebSocket-->  ProxyHub Client
   (proxyhub.cloud)                   (your machine)
 ```
+
+## Security
+
+ProxyHub includes several security features for production use:
+
+- **Socket authentication** — set `SOCKET_AUTH_KEY` on the server and `--auth-key` on the client to restrict connections
+- **TLS verification** — enabled by default; opt out with `PROXYHUB_ALLOW_INSECURE` for self-signed certs
+- **Rate limiting** — HTTP (5000 requests/10 min) and WebSocket (30 connections/min per IP) rate limits protect against abuse
+- **CORS restrictions** — configure `ALLOWED_ORIGINS` to restrict cross-origin access
+- **Security headers** — helmet middleware sets secure HTTP response headers
+- **Header filtering** — hop-by-hop headers are stripped from proxied requests
+- **Unpredictable tunnel IDs** — cryptographically random tunnel URLs
+
+See [SECURITY.md](SECURITY.md) for full details, configuration options, and the list of fixed security issues.
 
 ## Development
 

@@ -3,6 +3,8 @@ import express from "express";
 import "dotenv/config";
 import http from 'http';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import crypto from 'crypto';
 import SocketHandler from "./lib/socket";
 import RequestMiddleware from "./middlewares/request";
@@ -22,15 +24,37 @@ function timingSafeEqual(a: string, b: string): boolean {
     return crypto.timingSafeEqual(bufA, bufB);
 }
 
+const HOP_BY_HOP_HEADERS = new Set([
+    'transfer-encoding',
+    'connection',
+    'keep-alive',
+    'upgrade',
+    'te',
+    'trailer',
+    'proxy-authenticate',
+    'proxy-authorization',
+]);
+
 const app = express();
 const httpServer = http.createServer(app);
 
 const socketHandler = new SocketHandler(httpServer);
 socketHandler.start();
 
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
-app.use(cors());
+app.use(helmet());
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '10mb' }));
+const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim());
+app.use(cors(allowedOrigins ? { origin: allowedOrigins } : undefined));
+
+const httpLimiter = rateLimit({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '600000', 10),
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '5000', 10),
+    skip: (req) => req.path === '/status' || req.path === '/health',
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+app.use(httpLimiter);
 
 app.get('/status', (req, res, next) => {
     const id = extractIdFromDomain(req.hostname);
@@ -101,17 +125,22 @@ app.use("/", RequestMiddleware, (req, res) => {
 
     debug('Routing to tunnel:', socketId, '->', tunnelMapping.socketId);
 
+    const filteredHeaders: Record<string, any> = {
+        ...req?.headers,
+        host: req?.headers?.host,
+        origin: req?.headers?.origin,
+        referer: req?.headers?.referer,
+        "if-none-match": undefined,
+        "if-modified-since": undefined,
+        "Cache-Control": "no-store",
+    };
+    for (const header of HOP_BY_HOP_HEADERS) {
+        delete filteredHeaders[header];
+    }
+
     const requestChannel = new RequestChannel(tunnelMapping.socket, {
         method: req.method,
-        headers: {
-            ...req?.headers,
-            host: req?.headers?.host,
-            origin: req?.headers?.origin,
-            referer: req?.headers?.referer,
-            "if-none-match": undefined,
-            "if-modified-since": undefined,
-            "Cache-Control": "no-store",
-        },
+        headers: filteredHeaders,
         path: req.url,
         body: req.body,
         clientIp: req.ip || req.socket?.remoteAddress || 'unknown',
