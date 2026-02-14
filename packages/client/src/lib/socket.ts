@@ -4,6 +4,37 @@ import { printError, printDebug } from "../utils/index.js";
 import * as http from "http";
 import { ResponseChannel } from "./tunnel.js";
 import * as crypto from "crypto";
+import { Transform, TransformCallback } from "stream";
+import {
+    initDb,
+    closeDb,
+    clearLogs,
+    insertRequest,
+    updateResponseHeaders as updateDbResponseHeaders,
+    completeRequest,
+    updateRequestError,
+} from "./db.js";
+import { setTunnelUrl } from "./inspector.js";
+
+const MAX_BODY_CAPTURE = 512 * 1024; // 512KB
+
+class ByteCounter extends Transform {
+    public byteCount = 0;
+    public chunks: Buffer[] = [];
+
+    _transform(chunk: Buffer, _encoding: string, callback: TransformCallback): void {
+        this.byteCount += chunk.length;
+        if (this.byteCount <= MAX_BODY_CAPTURE) {
+            this.chunks.push(chunk);
+        }
+        this.push(chunk);
+        callback();
+    }
+
+    getBody(): string {
+        return Buffer.concat(this.chunks).toString('utf-8');
+    }
+}
 
 // Global state for timeout tracking
 let timeoutInterval: NodeJS.Timeout | null = null;
@@ -60,6 +91,10 @@ const displayTunnelInfo = (data: any) => {
 
     if (data.tokenProtected) {
         console.log(formatLine('Token Protection', 'Enabled (X-Proxy-Token header required)', chalk.green));
+    }
+
+    if (data.inspectPort) {
+        console.log(formatLine('Inspector', `http://localhost:${data.inspectPort}`, chalk.magenta));
     }
 
     if (data.timeout?.enabled) {
@@ -128,6 +163,11 @@ const generateStableTunnelId = (port: number): string => {
 };
 
 const socketHandler = (option: ClientInitializationOptions) => {
+    if (option.inspect) {
+        initDb();
+        clearLogs();
+    }
+
     const stableTunnelId = generateStableTunnelId(option.port);
 
     let socketUrl = (
@@ -227,7 +267,11 @@ const socketHandler = (option: ClientInitializationOptions) => {
     });
 
     socket.on("on-connect-tunnel", (data) => {
-        displayTunnelInfo({ ...data, port: option.port });
+        const inspectPort = option.inspect ? (option.inspectPort || option.port + 1000) : undefined;
+        displayTunnelInfo({ ...data, port: option.port, inspectPort });
+        if (data.tunnelUrl && option.inspect) {
+            setTunnelUrl(data.tunnelUrl);
+        }
         if (option.debug) {
             printDebug("Tunnel data", data);
         }
@@ -240,12 +284,31 @@ const socketHandler = (option: ClientInitializationOptions) => {
             hostname: 'localhost',
         };
 
+        const startTime = Date.now();
+
         if (option.debug) {
             printDebug("Tunnel request received", {
                 requestId,
                 method: request.method,
                 path: request.path,
                 port: request.port
+            });
+        }
+
+        // Log request to inspector DB
+        if (option.inspect) {
+            const requestBody =
+                typeof request.body === "object"
+                    ? JSON.stringify(request.body)
+                    : request.body;
+            insertRequest({
+                id: requestId,
+                method: request.method,
+                path: request.path,
+                headers: JSON.stringify(request.headers),
+                body: requestBody || undefined,
+                client_ip: requestData.clientIp || undefined,
+                created_at: new Date().toISOString(),
             });
         }
 
@@ -271,6 +334,12 @@ const socketHandler = (option: ClientInitializationOptions) => {
         proxyRequest.on("timeout", () => {
             printError("Request timeout after 5 seconds");
             proxyRequest.destroy();
+            if (option.inspect) {
+                updateRequestError({
+                    id: requestId,
+                    error: 'Request timeout after 5 seconds',
+                });
+            }
             if (option.debug) {
                 printDebug("Request timeout", { path: request.path });
             }
@@ -278,6 +347,12 @@ const socketHandler = (option: ClientInitializationOptions) => {
 
         proxyRequest.once("error", (error: Error) => {
             printError(`Request failed: ${error.message}`);
+            if (option.inspect) {
+                updateRequestError({
+                    id: requestId,
+                    error: error.message,
+                });
+            }
             if (option.debug) {
                 printDebug("Request error", error);
             }
@@ -299,24 +374,59 @@ const socketHandler = (option: ClientInitializationOptions) => {
                 statusColor(response.statusCode?.toString() || '')
             );
 
+            const responseHeaders = Object.fromEntries(
+                Object.entries(response.headers).map(([key, value]) => [
+                    key,
+                    Array.isArray(value) ? value.join(', ') : value || ''
+                ])
+            );
+
             responseChannel.sendHeaders({
                 statusCode: response.statusCode,
                 statusMessage: response.statusMessage,
-                headers: Object.fromEntries(
-                    Object.entries(response.headers).map(([key, value]) => [
-                        key,
-                        Array.isArray(value) ? value.join(', ') : value || ''
-                    ])
-                ),
+                headers: responseHeaders,
                 httpVersion: response.httpVersion,
             });
 
-            // Use pipe for automatic backpressure handling
-            response.pipe(responseChannel);
+            // Log response headers to inspector DB
+            if (option.inspect) {
+                updateDbResponseHeaders({
+                    id: requestId,
+                    status_code: response.statusCode,
+                    status_message: response.statusMessage,
+                    response_headers: JSON.stringify(responseHeaders),
+                    http_version: response.httpVersion,
+                });
+            }
+
+            if (option.inspect) {
+                // Use ByteCounter to capture response body for inspector
+                const byteCounter = new ByteCounter();
+                response.pipe(byteCounter).pipe(responseChannel);
+
+                byteCounter.on('end', () => {
+                    completeRequest({
+                        id: requestId,
+                        response_body_size: byteCounter.byteCount,
+                        response_body: byteCounter.getBody(),
+                        duration_ms: Date.now() - startTime,
+                        completed_at: new Date().toISOString(),
+                    });
+                });
+            } else {
+                // Use pipe for automatic backpressure handling
+                response.pipe(responseChannel);
+            }
 
             response.on("error", (error: Error) => {
                 printError(`Response error: ${error.message}`);
                 responseChannel.destroy(error);
+                if (option.inspect) {
+                    updateRequestError({
+                        id: requestId,
+                        error: error.message,
+                    });
+                }
                 if (option.debug) {
                     printDebug("Response error", error);
                 }
@@ -333,6 +443,9 @@ const socketHandler = (option: ClientInitializationOptions) => {
     // Graceful shutdown handlers
     const handleShutdown = () => {
         console.log(chalk.yellow.bold('\nShutting down ProxyHub client...'));
+        if (option.inspect) {
+            closeDb();
+        }
         cleanup(socket);
         process.exit(0);
     };

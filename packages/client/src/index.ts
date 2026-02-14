@@ -7,6 +7,7 @@ import * as path from 'path';
 import chalk from 'chalk';
 import { portNumberCustomValidationForCommander } from './utils/index.js';
 import socketHandler from './lib/socket.js';
+import { startInspector } from './lib/inspector.js';
 import 'dotenv/config';
 
 // Get package.json version
@@ -24,7 +25,9 @@ program
     .version(version)
     .requiredOption('-p, --port <port>', 'Port number for proxying', portNumberCustomValidationForCommander)
     .option('-d, --debug', 'Enable debug mode', false)
-    .option('-t, --token <token>', 'Token for tunnel protection');
+    .option('-t, --token <token>', 'Token for tunnel protection')
+    .option('-i, --inspect', 'Enable request inspector', false)
+    .option('--inspect-port <port>', 'Port for inspector UI', parseInt);
 
 // Parse command line arguments
 program.parse(process.argv);
@@ -34,7 +37,9 @@ const parsedOpts = program.opts() as ClientInitializationOptions;
 const options: ClientInitializationOptions = {
     port: parsedOpts.port,
     debug: parsedOpts.debug,
-    token: parsedOpts.token || process.env.PROXYHUB_TOKEN
+    token: parsedOpts.token || process.env.PROXYHUB_TOKEN,
+    inspect: parsedOpts.inspect,
+    inspectPort: parsedOpts.inspectPort,
 };
 
 // Startup logging
@@ -46,8 +51,17 @@ if (options.token) {
 if (options.debug) {
     console.log('Debug mode:', chalk.green('enabled'));
 }
+if (options.inspect) {
+    console.log('Inspector:', chalk.green('enabled'));
+}
 console.log('');
 
 // Start the ProxyHub client
 socketHandler(options);
+
+// Start inspector if enabled
+if (options.inspect) {
+    const inspectPort = options.inspectPort || options.port + 1000;
+    startInspector(inspectPort, options.port);
+}
 

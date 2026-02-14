@@ -17,6 +17,9 @@ That's it! Your local server running on port 3000 is now accessible from the int
 ## Features
 
 - **Instant Setup** - No account required, just run one command
+- **Request Inspector** - Built-in web UI to monitor all proxied requests and responses in real-time
+- **API Composer** - Postman-like request builder inside the inspector to craft and send HTTP requests
+- **cURL Export** - Generate copy-ready cURL commands from any captured request
 - **Token Protection** - Secure your tunnels with authentication tokens
 - **Self-Hostable** - Run your own ProxyHub server
 - **Session Timeouts** - Configurable session duration limits
@@ -49,6 +52,28 @@ proxyhub -p 3000
 proxyhub -p 3000 --debug
 ```
 
+### Request Inspector
+
+Enable the built-in inspector to monitor all proxied requests and responses through a local web UI:
+
+```bash
+# Enable inspector (opens on port + 1000 by default)
+proxyhub -p 3000 --inspect
+
+# Custom inspector port
+proxyhub -p 3000 --inspect --inspect-port 9000
+```
+
+Once enabled, open the inspector URL shown in the terminal (e.g., `http://localhost:4000`) to view requests in real-time.
+
+Inspector features:
+- Filter by method, status code, and path
+- View full request/response headers and bodies
+- Resend captured requests with one click
+- **API Composer** — click "Compose" to build requests from scratch, or "Edit in Composer" on any captured request to pre-fill the form with its method, URL, headers, and body
+- **cURL export** — expand the cURL section on any request detail page to get a ready-to-copy command
+- Light/dark theme
+
 ### Token Protection
 
 Secure your tunnel so only requests with the correct token can access it:
@@ -73,6 +98,8 @@ curl -H "X-Proxy-Token: mysecrettoken" https://your-tunnel.proxyhub.cloud/
 |--------|-------------|
 | `-p, --port <port>` | Port number to proxy (required) |
 | `-t, --token <token>` | Token for tunnel protection |
+| `-i, --inspect` | Enable request inspector UI |
+| `--inspect-port <port>` | Port for inspector UI (default: port + 1000) |
 | `-d, --debug` | Enable debug mode |
 | `-V, --version` | Output version number |
 | `-h, --help` | Display help |
