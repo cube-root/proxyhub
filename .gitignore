@@ -135,3 +135,5 @@ dist
 caddy/
 ssl/
 keys/
+
+setup/**/**
