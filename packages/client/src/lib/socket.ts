@@ -165,6 +165,7 @@ const socketHandler = (option: ClientInitializationOptions) => {
     socket.on("connect", () => {
         if (socket.connected) {
             console.log(chalk.green.bold("Connected to ProxyHub server"));
+            console.log(chalk.gray(`Visit ${chalk.underline('https://proxyhub.app')} for more details`));
             console.log(chalk.cyan(`Tunnel ID: ${stableTunnelId}`));
 
             socket.emit('register-tunnel', {

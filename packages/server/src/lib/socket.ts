@@ -122,6 +122,9 @@ class SocketHandler {
     }
 
     private registerTunnel(stableTunnelId: string, socket: any, port: number, token?: string) {
+        // Allow many concurrent request listeners per tunnel socket
+        socket.setMaxListeners(0);
+
         const mapping: TunnelMapping = {
             stableTunnelId,
             socketId: socket.id,

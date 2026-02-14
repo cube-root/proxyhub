@@ -66,8 +66,8 @@ function createTunnelRequest(
     // Set up listeners
     socket.on('response-headers', onResponseHeader)
     socket.on('response-chunk', onResponseChunk)
-    socket.once('response-end', onResponseEnd)
-    socket.once('response-destroy', onResponseDestroy)
+    socket.on('response-end', onResponseEnd)
+    socket.on('response-destroy', onResponseDestroy)
 
     // Emit the request
     socket.emit('tunnel-request', requestId, data)
