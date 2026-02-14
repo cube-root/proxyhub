@@ -4,7 +4,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
 [![npm](https://img.shields.io/npm/v/proxyhub)](https://www.npmjs.com/package/proxyhub)
 
-Expose localhost to the internet. Self-hostable ngrok alternative.
+Expose localhost to the internet. Open-source and self-hostable.
 
 ## Quick Start
 
