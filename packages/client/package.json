@@ -1,5 +1,5 @@
 {
-  "name": "@proxyhub/client",
+  "name": "proxyhub",
   "version": "0.0.1",
   "description": "ProxyHub CLI - Test your APIs with ease",
   "type": "module",

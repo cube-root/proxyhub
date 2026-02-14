@@ -131,14 +131,14 @@ const socketHandler = (option: ClientInitializationOptions) => {
     const stableTunnelId = generateStableTunnelId(option.port);
 
     let socketUrl = (
-        process?.env?.SOCKET_URL ?? "https://connect.proxyhub.cloud"
+        process?.env?.PROXYHUB_SOCKET_URL ?? "https://connect.proxyhub.cloud"
     ).replace("http://", "https://");
 
     if (socketUrl.includes("localhost")) {
         socketUrl = "http://localhost:4000";
     }
 
-    const socketPath = process?.env?.SOCKET_PATH ?? "/socket.io";
+    const socketPath = process?.env?.PROXYHUB_SOCKET_PATH ?? "/socket.io";
     const clientSecret = crypto.randomBytes(32).toString("hex");
 
     const socket = io(socketUrl, {

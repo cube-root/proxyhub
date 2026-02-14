@@ -327,8 +327,8 @@ curl https://test123.proxyhub.cloud/
 Update client `.env` to point to your server:
 
 ```bash
-SOCKET_URL=https://connect.proxyhub.cloud
-SOCKET_PATH=/socket.io
+PROXYHUB_SOCKET_URL=https://connect.proxyhub.cloud
+PROXYHUB_SOCKET_PATH=/socket.io
 ```
 
 Or use directly:

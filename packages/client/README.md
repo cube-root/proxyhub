@@ -92,8 +92,8 @@ proxyhub -p 3000 -d --keep-history
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `SOCKET_URL` | ProxyHub server URL | `https://connect.proxyhub.cloud` |
-| `SOCKET_PATH` | Socket.IO path | `/socket.io` |
+| `PROXYHUB_SOCKET_URL` | ProxyHub server URL | `https://connect.proxyhub.cloud` |
+| `PROXYHUB_SOCKET_PATH` | Socket.IO path | `/socket.io` |
 
 ## Development Setup
 

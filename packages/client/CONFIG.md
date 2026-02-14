@@ -8,10 +8,10 @@ Create a `.env` file in the client directory with the following variables:
 
 ```env
 # ProxyHub Server URL
-SOCKET_URL=https://connect.proxyhub.cloud
+PROXYHUB_SOCKET_URL=https://connect.proxyhub.cloud
 
 # Socket.io path (should match server)
-SOCKET_PATH=/socket.io
+PROXYHUB_SOCKET_PATH=/socket.io
 ```
 
 ### Development Configuration
@@ -19,8 +19,8 @@ SOCKET_PATH=/socket.io
 For local development, you can connect to a local server:
 
 ```env
-SOCKET_URL=http://localhost:4000
-SOCKET_PATH=/socket.io
+PROXYHUB_SOCKET_URL=http://localhost:4000
+PROXYHUB_SOCKET_PATH=/socket.io
 ```
 
 ## Usage

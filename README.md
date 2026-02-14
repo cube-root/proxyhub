@@ -2,14 +2,14 @@
 
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
-[![npm](https://img.shields.io/npm/v/@proxyhub/client)](https://www.npmjs.com/package/@proxyhub/client)
+[![npm](https://img.shields.io/npm/v/proxyhub)](https://www.npmjs.com/package/proxyhub)
 
 Expose localhost to the internet. Self-hostable ngrok alternative.
 
 ## Quick Start
 
 ```bash
-npx @proxyhub/client -p 3000
+npx proxyhub -p 3000
 ```
 
 That's it! Your local server running on port 3000 is now accessible from the internet.
@@ -27,13 +27,13 @@ That's it! Your local server running on port 3000 is now accessible from the int
 ### Using npx (no install)
 
 ```bash
-npx @proxyhub/client -p <port>
+npx proxyhub -p <port>
 ```
 
 ### Global install
 
 ```bash
-npm install -g @proxyhub/client
+npm install -g proxyhub
 proxyhub -p <port>
 ```
 
@@ -113,7 +113,7 @@ services:
 ### Connect Client to Self-Hosted Server
 
 ```bash
-SOCKET_URL=https://your-server.com proxyhub -p 3000
+PROXYHUB_SOCKET_URL=https://your-server.com proxyhub -p 3000
 ```
 ## Environment Variables
 
@@ -131,7 +131,8 @@ SOCKET_URL=https://your-server.com proxyhub -p 3000
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SOCKET_URL` | `https://connect.proxyhub.cloud` | ProxyHub server URL |
+| `PROXYHUB_SOCKET_URL` | `https://connect.proxyhub.cloud` | ProxyHub server URL |
+| `PROXYHUB_SOCKET_PATH` | `/socket.io` | Socket.IO path |
 | `PROXYHUB_TOKEN` | - | Token for tunnel protection |
 
 ## How It Works
