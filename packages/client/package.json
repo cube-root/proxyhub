@@ -23,8 +23,12 @@
     "api",
     "testing"
   ],
-  "author": "",
+  "author": "Abhijith V",
   "license": "MIT",
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts"
+  ],
   "homepage": "https://proxyhub.app",
   "repository": {
     "type": "git",
