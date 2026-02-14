@@ -51,7 +51,7 @@ web_modules/
 # Optional npm cache directory
 .npm
 .claude/
-docs/* 
+
 # Optional eslint cache
 .eslintcache
 
@@ -136,4 +136,3 @@ caddy/
 ssl/
 keys/
 
-setup/**/**

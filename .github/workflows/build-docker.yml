@@ -20,7 +20,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./packages/server
-          file: ./packages/server/dockerfile
+          file: ./packages/server/Dockerfile
           push: false
           tags: proxyhub-server:latest
           cache-from: type=gha

@@ -1,8 +1,6 @@
 services:
   server:
-    build:
-      context: ./packages/server
-      dockerfile: Dockerfile
+    image: ghcr.io/cube-root/proxyhub/server:0.0.4
     container_name: proxyhub-server
     restart: unless-stopped
     ports:
