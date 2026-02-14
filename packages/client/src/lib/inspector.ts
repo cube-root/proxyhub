@@ -12,9 +12,19 @@ import {
     completeRequest,
     updateRequestError,
 } from './db.js';
+import {
+    getAllMocks,
+    getMockById as getMockDefById,
+    insertMock,
+    updateMock,
+    deleteMock,
+    toggleMock,
+    clearMocks,
+} from './mock-db.js';
 
 let tunnelUrl: string | null = null;
 let localTargetPort: number = 3000;
+let mockEnabled: boolean = false;
 
 export function setTunnelUrl(url: string): void {
     tunnelUrl = url;
@@ -60,7 +70,18 @@ function methodBadge(method: string): string {
     return `<span class="badge ${cls}">${escapeHtml(method)}</span>`;
 }
 
+function isMockedRequest(record: RequestLogRecord): boolean {
+    if (!record.response_headers) return false;
+    try {
+        const headers = JSON.parse(record.response_headers);
+        return !!headers['x-proxyhub-mock'];
+    } catch {
+        return false;
+    }
+}
+
 const OAT_CSS = 'https://unpkg.com/@knadh/oat@latest/oat.min.css';
+const INTER_FONT = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap';
 
 function pageHead(title: string): string {
     return `<!DOCTYPE html>
@@ -69,6 +90,9 @@ function pageHead(title: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="${INTER_FONT}">
 <link rel="stylesheet" href="${OAT_CSS}">
 <script>
   (function(){
@@ -78,34 +102,84 @@ function pageHead(title: string): string {
   })();
 </script>
 <style>
-  body { padding: var(--space-4); min-height: 100vh; display: flex; flex-direction: column; }
-  .container { flex: 1; }
-  .header { margin-bottom: var(--space-6); }
-  .header h4 { margin: 0; }
-  .header p { color: var(--muted-foreground); margin: 0; }
-  .stat-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); margin-bottom: var(--space-4); }
-  .stat-card { text-align: center; }
-  .stat-card .val { font-size: var(--text-4); font-weight: var(--font-bold); }
-  .stat-card .lbl { font-size: var(--text-8); color: var(--muted-foreground); }
+  *, *::before, *::after { box-sizing: border-box; }
+  body { font-family: 'Inter', var(--font-sans, system-ui, sans-serif); padding: var(--space-4); min-height: 100vh; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; }
+  .container { flex: 1; max-width: 1200px; margin: 0 auto; width: 100%; }
+
+  /* ── Animations ── */
+  @keyframes fadeSlideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
+
+  /* ── Header ── */
+  .header { margin-bottom: var(--space-6); padding-bottom: var(--space-4); border-bottom: 2px solid var(--border); position: relative; }
+  .header::after { content: ''; position: absolute; bottom: -2px; left: 0; width: 60px; height: 2px; background: linear-gradient(90deg, #7c3aed, #2563eb); border-radius: 2px; }
+  .header h4 { margin: 0; font-weight: 700; letter-spacing: -0.02em; }
+  .header p { color: var(--muted-foreground); margin: var(--space-1) 0 0; font-size: var(--text-7); }
+
+  /* ── Stat Cards ── */
+  .stat-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); margin-bottom: var(--space-5); animation: fadeSlideIn 0.4s ease; }
+  .stat-card { text-align: center; position: relative; overflow: hidden; transition: transform 0.2s ease, box-shadow 0.2s ease; border-radius: var(--radius-lg, 0.75rem); padding: var(--space-3); }
+  .stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+  [data-theme="dark"] .stat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+  .stat-card .stat-icon { font-size: 1.1rem; margin-bottom: var(--space-1); display: block; opacity: 0.8; }
+  .stat-card .val { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
+  .stat-card .lbl { font-size: 0.7rem; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin-top: 0.2rem; }
+  .stat-card.ok { border-left: 3px solid var(--success); }
   .stat-card.ok .val { color: var(--success); }
+  .stat-card.err { border-left: 3px solid var(--danger); }
   .stat-card.err .val { color: var(--danger); }
+
+  /* ── Filters ── */
   .filters { margin-bottom: var(--space-4); }
   .filters fieldset.group { margin: 0; }
-  table { table-layout: auto; }
+  .filters select, .filters input[type="text"], .filters input[name="status"] {
+    border-radius: var(--radius-md, 0.5rem); transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .filters select:focus, .filters input:focus { border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.15); outline: none; }
+
+  /* ── Action bar ── */
+  .action-bar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--border); }
+
+  /* ── Table ── */
+  table { table-layout: auto; border-collapse: separate; border-spacing: 0; width: 100%; }
+  thead th { font-size: var(--text-8); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; color: var(--muted-foreground); white-space: nowrap; padding: var(--space-2) var(--space-3); }
+  tbody tr { transition: background-color 0.15s ease; }
+  tbody tr:nth-child(even) { background-color: rgba(0,0,0,0.02); }
+  [data-theme="dark"] tbody tr:nth-child(even) { background-color: rgba(255,255,255,0.02); }
   tr.clickable { cursor: pointer; }
-  .path-cell { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: var(--text-8); }
+  tr.clickable:hover { background-color: rgba(124,58,237,0.06) !important; }
+  [data-theme="dark"] tr.clickable:hover { background-color: rgba(124,58,237,0.12) !important; }
+  td { padding: var(--space-2) var(--space-3); vertical-align: middle; }
+  .path-cell { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Inter', var(--font-mono); font-size: var(--text-8); }
   .mono { font-family: var(--font-mono); font-size: var(--text-8); }
   .text-right { text-align: end; }
   .text-muted { color: var(--muted-foreground); }
+
+  /* ── Badges ── */
+  .badge { font-weight: 600; font-size: 0.7rem; padding: 0.2em 0.65em; border-radius: var(--radius-full, 9999px); letter-spacing: 0.02em; line-height: 1.5; display: inline-block; text-align: center; min-width: 2.2em; }
+
+  /* ── Pagination ── */
   .pagination { font-size: var(--text-7); }
-  .empty-state { text-align: center; padding: var(--space-12) var(--space-4); color: var(--muted-foreground); }
-  .empty-state p { font-size: var(--text-7); }
+  .pagination a, .pagination .text-muted { display: inline-block; padding: 0.3em 0.8em; border-radius: var(--radius-full, 9999px); text-decoration: none; font-weight: 500; transition: background-color 0.15s ease; }
+  .pagination a:hover { background-color: rgba(124,58,237,0.1); color: #7c3aed; }
+
+  /* ── Empty State ── */
+  .empty-state { text-align: center; padding: var(--space-12) var(--space-4); color: var(--muted-foreground); animation: fadeSlideIn 0.5s ease; }
+  .empty-state .empty-icon { font-size: 3rem; display: block; margin-bottom: var(--space-3); opacity: 0.6; }
+  .empty-state p { font-size: var(--text-7); margin: var(--space-1) 0; }
+  .empty-state p:first-of-type { font-weight: 600; color: var(--foreground); font-size: var(--text-6, 1rem); }
+
+  /* ── Detail page ── */
   .detail-grid { display: grid; grid-template-columns: 140px 1fr; gap: 0; font-size: var(--text-7); }
-  .detail-grid dt { padding: var(--space-2) var(--space-3); color: var(--muted-foreground); font-weight: var(--font-medium); border-bottom: 1px solid var(--border); }
+  .detail-grid dt { padding: var(--space-2) var(--space-3); color: var(--muted-foreground); font-weight: 500; border-bottom: 1px solid var(--border); background: rgba(0,0,0,0.015); }
+  [data-theme="dark"] .detail-grid dt { background: rgba(255,255,255,0.02); }
   .detail-grid dd { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); word-break: break-all; margin: 0; }
-  .section-title { font-size: var(--text-7); font-weight: var(--font-semibold); margin: var(--space-5) 0 var(--space-2); }
-  .theme-toggle { background: none; border: 1px solid var(--border); border-radius: var(--radius-full); width: 2rem; height: 2rem; padding: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--foreground); font-size: 1rem; line-height: 1; }
-  .theme-toggle:hover { background-color: var(--accent); }
+  .section-title { font-size: var(--text-7); font-weight: 600; margin: var(--space-5) 0 var(--space-2); display: flex; align-items: center; gap: var(--space-2); }
+  pre { border-radius: var(--radius-md, 0.5rem); font-size: var(--text-8); line-height: 1.6; }
+
+  /* ── Theme toggle ── */
+  .theme-toggle { background: none; border: 1px solid var(--border); border-radius: var(--radius-full); width: 2.2rem; height: 2.2rem; padding: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--foreground); font-size: 1.05rem; line-height: 1; transition: all 0.2s ease; }
+  .theme-toggle:hover { background-color: var(--accent); box-shadow: 0 0 8px rgba(124,58,237,0.25); border-color: #7c3aed; }
   .theme-icon-light, .theme-icon-dark { display: none; }
   [data-theme="dark"] .theme-icon-light { display: inline; }
   [data-theme="dark"] .theme-icon-dark { display: none; }
@@ -113,23 +187,118 @@ function pageHead(title: string): string {
   :not([data-theme="dark"]) .theme-icon-dark, html:not([data-theme]) .theme-icon-dark { display: inline; }
   [data-theme="light"] .theme-icon-dark { display: inline; }
   [data-theme="light"] .theme-icon-light { display: none; }
+
+  /* ── Footer ── */
   .site-footer { margin-top: var(--space-8); padding: var(--space-4) 0; border-top: 1px solid var(--border); font-size: var(--text-8); color: var(--muted-foreground); }
-  .site-footer a { color: var(--muted-foreground); text-decoration: none; }
-  .site-footer a:hover { color: var(--foreground); text-decoration: underline; }
-  /* Mobile cards for requests list */
+  .site-footer a { color: var(--muted-foreground); text-decoration: none; transition: color 0.15s ease; }
+  .site-footer a:hover { color: var(--foreground); }
+
+  /* ── Mobile request cards ── */
   .mobile-cards { display: none; }
-  .req-card { cursor: pointer; margin-bottom: var(--space-2); }
-  .req-card:hover { border-color: var(--ring); }
+  .req-card { cursor: pointer; margin-bottom: var(--space-2); border-radius: var(--radius-md, 0.5rem); transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease; animation: fadeSlideIn 0.35s ease both; }
+  .req-card:hover { border-color: #7c3aed; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(124,58,237,0.1); }
   .req-card-header { margin-bottom: var(--space-2); }
   .req-card-path { font-family: var(--font-mono); font-size: var(--text-8); word-break: break-all; margin: var(--space-1) 0; }
   .req-card-meta { font-size: var(--text-8); color: var(--muted-foreground); }
-  @media (max-width: 768px) {
-    .stat-cards { grid-template-columns: repeat(2, 1fr); }
-    .desktop-table { display: none; }
-    .mobile-cards { display: block; }
-    .detail-grid { grid-template-columns: 110px 1fr; }
-    .filters .hstack { flex-wrap: wrap; }
+
+  /* ── Mock pill & banner ── */
+  .mock-pill { display: inline-block; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.04em; padding: 0.15em 0.55em; border-radius: var(--radius-full); background: linear-gradient(135deg, #7c3aed, #6d28d9); color: #fff; vertical-align: middle; line-height: 1.4; box-shadow: 0 0 6px rgba(124,58,237,0.3); }
+  [data-theme="dark"] .mock-pill { background: linear-gradient(135deg, #a78bfa, #8b5cf6); color: #1e1b4b; box-shadow: 0 0 8px rgba(167,139,250,0.3); }
+  .mock-banner { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); margin-bottom: var(--space-4); background: linear-gradient(135deg, #ede9fe, #e0e7ff); border: 1px solid #c4b5fd; color: #5b21b6; font-size: var(--text-7); }
+  [data-theme="dark"] .mock-banner { background: linear-gradient(135deg, #2e1065, #1e1b4b); border-color: #6d28d9; color: #c4b5fd; }
+  .mock-banner-icon { font-size: 1.15rem; flex-shrink: 0; }
+  .mock-banner a { color: inherit; text-decoration: underline; font-weight: 600; }
+
+  /* ── Buttons ── */
+  button, [type="submit"], .button { 
+    font-family: 'Inter', var(--font-sans, system-ui, sans-serif);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); 
+    font-size: 0.9rem; 
+    padding: 0.6em 1.2em; 
+    font-weight: 600; 
+    border-radius: var(--radius-md, 0.5rem); 
+    cursor: pointer;
+    display: inline-flex; 
+    align-items: center; 
+    justify-content: center; 
+    gap: 0.5em; 
+    line-height: 1.2;
+    border: 1px solid transparent;
   }
+  button:active, [type="submit"]:active, .button:active { transform: scale(0.96); }
+  button.small { font-size: 0.8rem; padding: 0.4em 0.8em; }
+  
+  /* Primary button style (default) */
+  button:not(.outline):not([data-variant]) {
+      background-color: var(--foreground);
+      color: var(--background);
+      border-color: var(--foreground);
+  }
+  button:not(.outline):not([data-variant]):hover {
+      background-color: #7c3aed;
+      border-color: #7c3aed;
+      color: white;
+      box-shadow: 0 4px 12px rgba(124,58,237,0.3);
+      transform: translateY(-1px);
+  }
+
+  /* Outline button style */
+  button.outline {
+      background-color: transparent;
+      border-color: var(--border);
+      color: var(--foreground);
+  }
+  button.outline:hover {
+      border-color: var(--foreground);
+      background-color: rgba(0,0,0,0.03);
+  }
+  [data-theme="dark"] button.outline:hover {
+      background-color: rgba(255,255,255,0.05);
+  }
+
+  /* Secondary variant */
+  button[data-variant="secondary"] {
+      background-color: var(--secondary, #f3f4f6);
+      color: var(--foreground);
+      border-color: var(--secondary, #f3f4f6);
+  }
+  [data-theme="dark"] button[data-variant="secondary"] {
+      background-color: #1f2937;
+      border-color: #1f2937;
+  }
+  button[data-variant="secondary"]:hover {
+      background-color: #e5e7eb;
+      border-color: #e5e7eb;
+      transform: translateY(-1px);
+  }
+  [data-theme="dark"] button[data-variant="secondary"]:hover {
+      background-color: #374151;
+      border-color: #374151;
+  }
+
+  /* Danger variant */
+  button[data-variant="danger"] {
+      background-color: #fee2e2;
+      color: #b91c1c;
+      border-color: #fee2e2;
+  }
+  [data-theme="dark"] button[data-variant="danger"] {
+      background-color: #450a0a;
+      color: #fca5a5;
+      border-color: #450a0a;
+  }
+  button[data-variant="danger"]:hover {
+      background-color: #fecaca;
+      border-color: #fecaca;
+  }
+  [data-theme="dark"] button[data-variant="danger"]:hover {
+      background-color: #7f1d1d;
+      border-color: #7f1d1d;
+  }
+
+  /* ── Action bar ── */
+  .action-bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-4); padding: var(--space-3) 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: rgba(0,0,0,0.005); }
+  [data-theme="dark"] .action-bar { background: rgba(255,255,255,0.01); }
 </style>
 </head>
 <body>
@@ -154,7 +323,7 @@ function toggleTheme(){
 </script>
 </body></html>`;
 
-const THEME_TOGGLE = `<button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+const THEME_TOGGLE = `<button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle dark mode">
     <span class="theme-icon-light">&#9788;</span>
     <span class="theme-icon-dark">&#9790;</span>
 </button>`;
@@ -181,15 +350,16 @@ function renderPage(port: number, filters: RequestQueryFilters): string {
         const size = r.response_body_size ? formatBytes(r.response_body_size) : '—';
         const time = new Date(r.created_at).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
         const errIcon = r.error ? ` <span class="badge danger" title="${escapeHtml(r.error)}">err</span>` : '';
+        const mockPill = isMockedRequest(r) ? ' <span class="mock-pill">MOCK</span>' : '';
         return `<tr class="clickable" onclick="location.href='/${r.id}'">
             <td>${methodBadge(r.method)}</td>
             <td class="path-cell" title="${escapeHtml(r.path)}">${escapeHtml(r.path)}</td>
-            <td>${statusBadge(r.status_code)}</td>
+            <td>${statusBadge(r.status_code)}${mockPill}</td>
             <td class="text-right mono">${duration}</td>
             <td class="text-right mono">${size}</td>
             <td class="mono">${r.client_ip || '—'}</td>
             <td class="mono">${time}${errIcon}</td>
-            <td><button class="small outline" onclick="event.stopPropagation();resend('${r.id}')">Resend</button></td>
+            <td><button class="small outline" onclick="event.stopPropagation();resend('${r.id}')">&#8635; Resend</button></td>
         </tr>`;
     }).join('\n');
 
@@ -197,10 +367,11 @@ function renderPage(port: number, filters: RequestQueryFilters): string {
         const duration = r.duration_ms !== null ? `${r.duration_ms}ms` : '—';
         const size = r.response_body_size ? formatBytes(r.response_body_size) : '—';
         const time = new Date(r.created_at).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const mockPill = isMockedRequest(r) ? ' <span class="mock-pill">MOCK</span>' : '';
         return `<div class="card req-card" onclick="location.href='/${r.id}'">
             <div class="req-card-header hstack justify-between">
-                <span>${methodBadge(r.method)} ${statusBadge(r.status_code)}</span>
-                <button class="small outline" onclick="event.stopPropagation();resend('${r.id}')">Resend</button>
+                <span>${methodBadge(r.method)} ${statusBadge(r.status_code)}${mockPill}</span>
+                <button class="small outline" onclick="event.stopPropagation();resend('${r.id}')">&#8635; Resend</button>
             </div>
             <div class="req-card-path">${escapeHtml(r.path)}</div>
             <div class="req-card-meta hstack gap-4">${time} &middot; ${duration} &middot; ${size}${r.client_ip ? ` &middot; ${r.client_ip}` : ''}</div>
@@ -222,18 +393,22 @@ function renderPage(port: number, filters: RequestQueryFilters): string {
 
 <div class="stat-cards">
     <div class="card stat-card">
+        <span class="stat-icon">&#128202;</span>
         <div class="val">${stats.total}</div>
         <div class="lbl">Total</div>
     </div>
     <div class="card stat-card ok">
+        <span class="stat-icon">&#9989;</span>
         <div class="val">${stats.success}</div>
         <div class="lbl">Success</div>
     </div>
     <div class="card stat-card err">
+        <span class="stat-icon">&#10060;</span>
         <div class="val">${stats.error}</div>
         <div class="lbl">Errors</div>
     </div>
     <div class="card stat-card">
+        <span class="stat-icon">&#9201;</span>
         <div class="val">${stats.avg_duration_ms !== null ? stats.avg_duration_ms + '<small>ms</small>' : '—'}</div>
         <div class="lbl">Avg Duration</div>
     </div>
@@ -244,9 +419,9 @@ function renderPage(port: number, filters: RequestQueryFilters): string {
         <div class="hstack gap-2">
             <select name="method" style="width:auto">
                 <option value="">All methods</option>
-                ${['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'].map(m =>
-                    `<option value="${m}"${filters.method === m ? ' selected' : ''}>${m}</option>`
-                ).join('')}
+                ${['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].map(m =>
+        `<option value="${m}"${filters.method === m ? ' selected' : ''}>${m}</option>`
+    ).join('')}
             </select>
             <input name="status" placeholder="Status" value="${filters.status || ''}" style="width:80px">
             <input name="path" placeholder="Path contains..." value="${escapeHtml(filters.path || '')}" style="width:auto;flex:1;min-width:120px">
@@ -255,10 +430,12 @@ function renderPage(port: number, filters: RequestQueryFilters): string {
     </form>
 </div>
 
-<div class="hstack mb-4">
-    <button class="small outline" onclick="location.reload()">Refresh</button>
-    <a href="/compose"><button class="small" data-variant="secondary">+ Compose</button></a>
-    ${stats.total > 0 ? '<button class="small" data-variant="danger" onclick="clearAll()">Clear logs</button>' : ''}
+<div class="action-bar">
+    <button class="outline" onclick="location.reload()">&#8635; Refresh</button>
+    <a href="/compose" class="button" data-variant="secondary" style="text-decoration:none">+ Compose</a>
+    ${mockEnabled ? `<a href="/mocks" class="button" data-variant="secondary" style="text-decoration:none">&#127917; Mocks${(() => { const c = getAllMocks().length; return c > 0 ? ` <span class="mock-pill">${c}</span>` : ''; })()}</a>` : ''}
+    ${stats.total > 0 ? '<button data-variant="danger" onclick="clearAll()">Clear logs</button>' : ''}
+    <span class="refresh-indicator" style="margin-left:auto;"><span class="refresh-dot"></span> Live</span>
 </div>
 
 <div class="desktop-table">
@@ -267,13 +444,13 @@ function renderPage(port: number, filters: RequestQueryFilters): string {
     <th>Method</th><th>Path</th><th>Status</th><th class="text-right">Duration</th><th class="text-right">Size</th><th>Client IP</th><th>Time</th><th></th>
 </tr></thead>
 <tbody>
-${tableRows || `<tr><td colspan="8"><div class="empty-state"><p>No requests captured yet.</p><p>Send a request through your tunnel to see it here.</p></div></td></tr>`}
+${tableRows || `<tr><td colspan="8"><div class="empty-state"><span class="empty-icon">&#128225;</span><p>No requests captured yet</p><p>Send a request through your tunnel to see it here.</p></div></td></tr>`}
 </tbody>
 </table>
 </div>
 
 <div class="mobile-cards">
-${mobileCards || `<div class="empty-state"><p>No requests captured yet.</p><p>Send a request through your tunnel to see it here.</p></div>`}
+${mobileCards || `<div class="empty-state"><span class="empty-icon">&#128225;</span><p>No requests captured yet</p><p>Send a request through your tunnel to see it here.</p></div>`}
 </div>
 
 ${total > 0 ? `<div class="hstack justify-between pagination mt-4">
@@ -293,6 +470,16 @@ function resend(id){
         .then(d=>{if(d.id)location.href='/'+d.id;else alert(d.error||'Resend failed');})
         .catch(()=>alert('Resend failed'));
 }
+// Auto-refresh every 5s
+var _refreshTimer=setInterval(function(){
+    fetch('/api/stats').then(function(r){return r.json();}).then(function(s){
+        var cards=document.querySelectorAll('.stat-card .val');
+        if(cards[0])cards[0].textContent=s.total;
+        if(cards[1])cards[1].textContent=s.success;
+        if(cards[2])cards[2].textContent=s.error;
+        if(cards[3])cards[3].innerHTML=s.avg_duration_ms!==null?s.avg_duration_ms+'<small>ms</small>':'\u2014';
+    }).catch(function(){});
+},5000);
 </script>
 
 ${PAGE_FOOT}`;
@@ -335,13 +522,22 @@ function renderDetail(record: RequestLogRecord): string {
     const size = record.response_body_size ? formatBytes(record.response_body_size) : '—';
     const curlCmd = generateCurl(record);
 
+    // Check if this was a mocked response
+    const mocked = isMockedRequest(record);
+    const mockBanner = mocked
+        ? `<div class="mock-banner">
+            <span class="mock-banner-icon">&#9889;</span>
+            <span>This response was served from <strong>mock data</strong>, not a live server.${mockEnabled ? ' <a href="/mocks">Manage mocks</a>' : ''}</span>
+        </div>`
+        : '';
+
     return `${pageHead(`${record.method} ${record.path} — ProxyHub Inspector`)}
 
 <div class="hstack justify-between mb-4">
-    <div class="hstack">
-        <a href="/">&larr; Back</a>
-        <button class="small outline" onclick="resendReq()">Resend</button>
-        <a href="/compose?from=${record.id}"><button class="small" data-variant="secondary">Edit in Composer</button></a>
+    <div class="hstack gap-2">
+        <a href="/" class="button outline" style="text-decoration:none">&larr; Back</a>
+        <button class="outline" onclick="resendReq()">&#8635; Resend</button>
+        <a href="/compose?from=${record.id}" class="button" data-variant="secondary" style="text-decoration:none">&#9998; Edit in Composer</a>
     </div>
     ${THEME_TOGGLE}
 </div>
@@ -349,6 +545,8 @@ function renderDetail(record: RequestLogRecord): string {
 <div class="header">
     <h4>${methodBadge(record.method)} <code>${escapeHtml(record.path)}</code></h4>
 </div>
+
+${mockBanner}
 
 <div class="card mb-4">
     <dl class="detail-grid">
@@ -365,15 +563,15 @@ function renderDetail(record: RequestLogRecord): string {
 
 ${record.error ? `<div role="alert" data-variant="error" class="mb-4">${escapeHtml(record.error)}</div>` : ''}
 
-<h5 class="section-title">Request Headers</h5>
+<h5 class="section-title">&#128229; Request Headers</h5>
 <pre>${escapeHtml(prettyHeaders)}</pre>
 
-${record.body ? `<h5 class="section-title">Request Body</h5><pre>${escapeHtml(record.body)}</pre>` : ''}
+${record.body ? `<h5 class="section-title">&#128196; Request Body</h5><pre>${escapeHtml(record.body)}</pre>` : ''}
 
-<h5 class="section-title">Response Headers</h5>
+<h5 class="section-title">&#128228; Response Headers</h5>
 <pre>${escapeHtml(prettyResHeaders)}</pre>
 
-${record.response_body ? `<h5 class="section-title">Response Body</h5><pre>${escapeHtml(record.response_body)}</pre>` : ''}
+${record.response_body ? `<h5 class="section-title">&#128230; Response Body</h5><pre>${escapeHtml(record.response_body)}</pre>` : ''}
 
 <details class="mt-4">
     <summary style="cursor:pointer;font-weight:var(--font-semibold);font-size:var(--text-7);">cURL</summary>
@@ -457,12 +655,12 @@ function renderCompose(targetPort: number, prefill?: RequestLogRecord): string {
 <div class="card mb-4">
     <div class="hstack gap-2 mb-4 compose-url-row">
         <select id="compose-method" style="width:auto">
-            ${['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'].map(m =>
-                `<option value="${m}"${pfMethod === m ? ' selected' : ''}>${m}</option>`
-            ).join('')}
+            ${['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].map(m =>
+        `<option value="${m}"${pfMethod === m ? ' selected' : ''}>${m}</option>`
+    ).join('')}
         </select>
         <input id="compose-url" type="text" placeholder="${escapeHtml(baseUrl)}" value="${escapeHtml(pfUrl)}" style="flex:1;min-width:200px">
-        <button onclick="sendRequest()" id="compose-send">Send</button>
+        <button onclick="sendRequest()" id="compose-send" title="Ctrl+Enter to send">&#9889; Send</button>
     </div>
 
     <details open class="mb-4">
@@ -477,9 +675,9 @@ function renderCompose(targetPort: number, prefill?: RequestLogRecord): string {
         <summary style="cursor:pointer;font-weight:var(--font-semibold);font-size:var(--text-7);">Body</summary>
         <div class="mt-2">
             <select id="compose-content-type" style="width:auto;margin-bottom:var(--space-2)">
-                ${[['application/json','application/json'],['text/plain','text/plain'],['application/x-www-form-urlencoded','x-www-form-urlencoded'],['text/xml','text/xml']].map(([val,label]) =>
-                    `<option value="${val}"${pfContentType === val ? ' selected' : ''}>${label}</option>`
-                ).join('')}
+                ${[['application/json', 'application/json'], ['text/plain', 'text/plain'], ['application/x-www-form-urlencoded', 'x-www-form-urlencoded'], ['text/xml', 'text/xml']].map(([val, label]) =>
+        `<option value="${val}"${pfContentType === val ? ' selected' : ''}>${label}</option>`
+    ).join('')}
             </select>
             <textarea id="compose-body" rows="6" placeholder='{"key": "value"}' style="width:100%;font-family:var(--font-mono);font-size:var(--text-8);">${escapeHtml(pfBody)}</textarea>
         </div>
@@ -506,6 +704,10 @@ function renderCompose(targetPort: number, prefill?: RequestLogRecord): string {
 </style>
 
 <script>
+// Keyboard shortcut: Ctrl+Enter to send
+document.addEventListener('keydown',function(e){
+    if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();sendRequest();}
+});
 function escapeHtmlC(str){
     return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -647,19 +849,295 @@ function renderResponse(data){
 ${PAGE_FOOT}`;
 }
 
+function renderMocksPage(): string {
+    const mocks = getAllMocks();
+
+    const tableRows = mocks.map(m => {
+        const enabledClass = m.enabled ? 'success' : 'secondary';
+        const enabledLabel = m.enabled ? 'ON' : 'OFF';
+        let parsedHeaders: Record<string, string> = {};
+        try { parsedHeaders = JSON.parse(m.headers); } catch { }
+
+        return `<tr>
+            <td>${methodBadge(m.method)}</td>
+            <td class="path-cell mono" title="${escapeHtml(m.path)}">${escapeHtml(m.path)}</td>
+            <td><span class="badge outline">${escapeHtml(m.path_type)}</span></td>
+            <td>${statusBadge(m.status_code)}</td>
+            <td class="mono">${m.delay_ms}ms</td>
+            <td class="mono">${m.priority}</td>
+            <td><button class="small ${enabledClass}" onclick="toggleMock('${m.id}',${m.enabled ? 'false' : 'true'})">${enabledLabel}</button></td>
+            <td>
+                <div class="hstack gap-1">
+                    <button class="small outline" onclick="editMock('${m.id}')">Edit</button>
+                    <button class="small" data-variant="danger" onclick="deleteMock('${m.id}')">Delete</button>
+                </div>
+            </td>
+        </tr>`;
+    }).join('\n');
+
+    return `${pageHead('Mock Manager — ProxyHub Inspector')}
+
+<style>
+    .mock-form { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+    .mock-form .full { grid-column: 1 / -1; }
+    .mock-form label { font-size: var(--text-8); font-weight: 500; margin-bottom: var(--space-1); display: block; color: var(--muted-foreground); }
+    .mock-form textarea { width: 100%; font-family: var(--font-mono); font-size: var(--text-8); border-radius: var(--radius-md, 0.5rem); }
+    .mock-form input, .mock-form select { width: 100%; border-radius: var(--radius-md, 0.5rem); }
+    .mock-form input:focus, .mock-form select:focus, .mock-form textarea:focus { border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.15); outline: none; }
+    #mock-form-card { border-left: 3px solid #7c3aed; }
+    #mock-header-rows .hstack { margin-bottom: var(--space-1); }
+    @media (max-width: 768px) { .mock-form { grid-template-columns: 1fr; } }
+</style>
+
+<div class="hstack justify-between mb-4">
+    <div class="hstack gap-2">
+        <a href="/" class="button outline" style="text-decoration:none">&larr; Inspector</a>
+        <a href="/compose" class="button outline" style="text-decoration:none">Compose</a>
+    </div>
+    ${THEME_TOGGLE}
+</div>
+
+<div class="header">
+    <h4>Mock Manager</h4>
+    <p>Define mock responses for API paths</p>
+</div>
+
+<div class="action-bar">
+    <button onclick="showForm()">+ New Mock</button>
+    ${mocks.length > 0 ? '<button data-variant="danger" onclick="clearAllMocks()">Clear All</button>' : ''}
+</div>
+
+<div id="mock-form-card" class="card mb-4" style="display:none;">
+    <h5 id="mock-form-title" class="mb-4">Create Mock</h5>
+    <input type="hidden" id="mock-edit-id" value="">
+    <div class="mock-form">
+        <div>
+            <label>Method</label>
+            <select id="mock-method">
+                <option value="*">* (Any)</option>
+                ${['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].map(m =>
+        `<option value="${m}">${m}</option>`
+    ).join('')}
+            </select>
+        </div>
+        <div>
+            <label>Path Type</label>
+            <select id="mock-path-type">
+                <option value="exact">Exact</option>
+                <option value="prefix">Prefix</option>
+                <option value="regex">Regex</option>
+            </select>
+        </div>
+        <div class="full">
+            <label>Path</label>
+            <input type="text" id="mock-path" placeholder="/api/users">
+        </div>
+        <div>
+            <label>Status Code</label>
+            <input type="number" id="mock-status" value="200" min="100" max="599">
+        </div>
+        <div>
+            <label>Delay (ms)</label>
+            <input type="number" id="mock-delay" value="0" min="0">
+        </div>
+        <div>
+            <label>Priority</label>
+            <input type="number" id="mock-priority" value="0">
+        </div>
+        <div>
+            <label>Content-Type Quick Select</label>
+            <select id="mock-content-type" onchange="applyContentType()">
+                <option value="">Custom headers</option>
+                <option value="application/json" selected>application/json</option>
+                <option value="text/plain">text/plain</option>
+                <option value="text/html">text/html</option>
+                <option value="application/xml">application/xml</option>
+            </select>
+        </div>
+        <div class="full">
+            <label>Response Headers</label>
+            <div id="mock-header-rows">
+                <div class="hstack gap-2 mock-hdr-row">
+                    <input type="text" placeholder="Key" class="mhdr-key" style="flex:1">
+                    <input type="text" placeholder="Value" class="mhdr-val" style="flex:2">
+                    <button class="small outline" onclick="removeMockHeaderRow(this)">&times;</button>
+                </div>
+            </div>
+            <button class="small outline mt-1" onclick="addMockHeaderRow()">+ Add Header</button>
+        </div>
+        <div class="full">
+            <label>Response Body</label>
+            <textarea id="mock-body" rows="6" placeholder='{"message": "Hello from mock"}'></textarea>
+        </div>
+        <div class="full">
+            <label>Description (optional)</label>
+            <input type="text" id="mock-description" placeholder="What this mock is for">
+        </div>
+        <div class="full hstack gap-2">
+            <button onclick="saveMock()" id="mock-save-btn">Save Mock</button>
+            <button class="outline" onclick="hideForm()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+${mocks.length > 0 ? `<table>
+<thead><tr>
+    <th>Method</th><th>Path</th><th>Type</th><th>Status</th><th>Delay</th><th>Priority</th><th>Enabled</th><th>Actions</th>
+</tr></thead>
+<tbody>
+${tableRows}
+</tbody>
+</table>` : `<div class="empty-state"><span class="empty-icon">&#127917;</span><p>No mocks defined yet</p><p>Click "+ New Mock" to create your first mock response.</p></div>`}
+
+<script>
+function showForm(data){
+    var card=document.getElementById('mock-form-card');
+    card.style.display='';
+    document.getElementById('mock-form-title').textContent=data?'Edit Mock':'Create Mock';
+    document.getElementById('mock-edit-id').value=data?data.id:'';
+    document.getElementById('mock-method').value=data?data.method:'*';
+    document.getElementById('mock-path-type').value=data?data.path_type:'exact';
+    document.getElementById('mock-path').value=data?data.path:'';
+    document.getElementById('mock-status').value=data?data.status_code:200;
+    document.getElementById('mock-delay').value=data?data.delay_ms:0;
+    document.getElementById('mock-priority').value=data?data.priority:0;
+    document.getElementById('mock-body').value=data&&data.body?data.body:'';
+    document.getElementById('mock-description').value=data&&data.description?data.description:'';
+
+    // Populate headers
+    var container=document.getElementById('mock-header-rows');
+    container.innerHTML='';
+    var headers={};
+    if(data&&data.headers){
+        try{headers=typeof data.headers==='string'?JSON.parse(data.headers):data.headers;}catch(e){}
+    }
+    var keys=Object.keys(headers);
+    if(keys.length>0){
+        keys.forEach(function(k){
+            addMockHeaderRow(k,headers[k]);
+        });
+    } else {
+        addMockHeaderRow();
+    }
+    card.scrollIntoView({behavior:'smooth'});
+}
+function hideForm(){
+    document.getElementById('mock-form-card').style.display='none';
+}
+function addMockHeaderRow(key,val){
+    var container=document.getElementById('mock-header-rows');
+    var row=document.createElement('div');
+    row.className='hstack gap-2 mock-hdr-row';
+    row.innerHTML='<input type="text" placeholder="Key" class="mhdr-key" style="flex:1" value="'+(key?escH(key):'')+'">'
+        +'<input type="text" placeholder="Value" class="mhdr-val" style="flex:2" value="'+(val?escH(val):'')+'">'
+        +'<button class="small outline" onclick="removeMockHeaderRow(this)">&times;</button>';
+    container.appendChild(row);
+}
+function removeMockHeaderRow(btn){
+    var container=document.getElementById('mock-header-rows');
+    var rows=container.querySelectorAll('.mock-hdr-row');
+    if(rows.length<=1){
+        rows[0].querySelector('.mhdr-key').value='';
+        rows[0].querySelector('.mhdr-val').value='';
+        return;
+    }
+    btn.closest('.mock-hdr-row').remove();
+}
+function escH(s){return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function applyContentType(){
+    var ct=document.getElementById('mock-content-type').value;
+    if(!ct)return;
+    var container=document.getElementById('mock-header-rows');
+    var rows=container.querySelectorAll('.mock-hdr-row');
+    var found=false;
+    rows.forEach(function(row){
+        if(row.querySelector('.mhdr-key').value.toLowerCase()==='content-type'){
+            row.querySelector('.mhdr-val').value=ct;
+            found=true;
+        }
+    });
+    if(!found){
+        // If first row is empty, use it
+        if(rows.length===1&&!rows[0].querySelector('.mhdr-key').value){
+            rows[0].querySelector('.mhdr-key').value='Content-Type';
+            rows[0].querySelector('.mhdr-val').value=ct;
+        } else {
+            addMockHeaderRow('Content-Type',ct);
+        }
+    }
+}
+function getHeadersObj(){
+    var headers={};
+    document.querySelectorAll('#mock-header-rows .mock-hdr-row').forEach(function(row){
+        var k=row.querySelector('.mhdr-key').value.trim();
+        var v=row.querySelector('.mhdr-val').value;
+        if(k)headers[k]=v;
+    });
+    return headers;
+}
+function saveMock(){
+    var editId=document.getElementById('mock-edit-id').value;
+    var data={
+        method:document.getElementById('mock-method').value,
+        path:document.getElementById('mock-path').value.trim(),
+        path_type:document.getElementById('mock-path-type').value,
+        status_code:parseInt(document.getElementById('mock-status').value)||200,
+        headers:JSON.stringify(getHeadersObj()),
+        body:document.getElementById('mock-body').value,
+        delay_ms:parseInt(document.getElementById('mock-delay').value)||0,
+        priority:parseInt(document.getElementById('mock-priority').value)||0,
+        description:document.getElementById('mock-description').value||null
+    };
+    if(!data.path){alert('Path is required');return;}
+    var url=editId?'/api/mocks/'+editId:'/api/mocks';
+    var method=editId?'PUT':'POST';
+    fetch(url,{method:method,headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
+        .then(function(r){if(!r.ok)throw new Error('Failed');return r.json();})
+        .then(function(){location.reload();})
+        .catch(function(e){alert('Error: '+e.message);});
+}
+function editMock(id){
+    fetch('/api/mocks/'+id)
+        .then(function(r){return r.json();})
+        .then(function(data){showForm(data);})
+        .catch(function(){alert('Failed to load mock');});
+}
+function deleteMock(id){
+    if(!confirm('Delete this mock?'))return;
+    fetch('/api/mocks/'+id,{method:'DELETE'})
+        .then(function(){location.reload();})
+        .catch(function(){alert('Delete failed');});
+}
+function toggleMock(id,enabled){
+    fetch('/api/mocks/'+id+'/toggle',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:enabled})})
+        .then(function(){location.reload();})
+        .catch(function(){alert('Toggle failed');});
+}
+function clearAllMocks(){
+    if(!confirm('Delete all mocks?'))return;
+    fetch('/api/mocks',{method:'DELETE'})
+        .then(function(){location.reload();})
+        .catch(function(){alert('Clear failed');});
+}
+</script>
+
+${PAGE_FOOT}`;
+}
+
 function formatBytes(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function startInspector(port: number, targetPort: number): void {
-    localTargetPort = targetPort;
+export function startInspector(port: number, targetPort: number | undefined, options?: { mock?: boolean }): void {
+    localTargetPort = targetPort || 0;
+    mockEnabled = options?.mock || false;
     const app = express();
 
     app.use((_, res, next) => {
         res.header('Access-Control-Allow-Origin', '*');
-        res.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
         res.header('Access-Control-Allow-Headers', 'Content-Type');
         next();
     });
@@ -686,7 +1164,7 @@ export function startInspector(port: number, targetPort: number): void {
     app.get('/compose', (req, res) => {
         const fromId = req.query.from as string | undefined;
         const prefill = fromId ? getRequestById(fromId) : undefined;
-        res.type('html').send(renderCompose(targetPort, prefill));
+        res.type('html').send(renderCompose(targetPort || 0, prefill));
     });
 
     // Resend a request
@@ -885,9 +1363,66 @@ export function startInspector(port: number, targetPort: number): void {
         proxyReq.end();
     });
 
+    // Mock management routes (conditionally enabled)
+    if (mockEnabled) {
+        // Mock management HTML page
+        app.get('/mocks', (_req, res) => {
+            res.type('html').send(renderMocksPage());
+        });
+
+        // Mock API routes
+        app.get('/api/mocks', (_req, res) => {
+            res.json(getAllMocks());
+        });
+
+        app.post('/api/mocks', (req, res) => {
+            const { path, method, path_type, status_code, headers, body, delay_ms, priority, description } = req.body || {};
+            if (!path) {
+                res.status(400).json({ error: 'path is required' });
+                return;
+            }
+            const mock = insertMock({ path, method, path_type, status_code, headers, body, delay_ms, priority, description });
+            res.status(201).json(mock);
+        });
+
+        app.get('/api/mocks/:id', (req, res) => {
+            const mock = getMockDefById(req.params.id);
+            if (!mock) { res.status(404).json({ error: 'Mock not found' }); return; }
+            res.json(mock);
+        });
+
+        app.put('/api/mocks/:id', (req, res) => {
+            const updated = updateMock(req.params.id, req.body || {});
+            if (!updated) { res.status(404).json({ error: 'Mock not found' }); return; }
+            res.json(updated);
+        });
+
+        app.delete('/api/mocks/:id', (req, res) => {
+            const deleted = deleteMock(req.params.id);
+            if (!deleted) { res.status(404).json({ error: 'Mock not found' }); return; }
+            res.json({ message: 'Mock deleted' });
+        });
+
+        app.patch('/api/mocks/:id/toggle', (req, res) => {
+            const { enabled } = req.body || {};
+            if (typeof enabled !== 'boolean' && typeof enabled !== 'number') {
+                res.status(400).json({ error: 'enabled is required (boolean)' });
+                return;
+            }
+            const mock = toggleMock(req.params.id, !!enabled);
+            if (!mock) { res.status(404).json({ error: 'Mock not found' }); return; }
+            res.json(mock);
+        });
+
+        app.delete('/api/mocks', (_req, res) => {
+            clearMocks();
+            res.json({ message: 'All mocks cleared' });
+        });
+    }
+
     // HTML detail view
     app.get('/:id', (req, res, next) => {
-        if (req.params.id === 'api' || req.params.id === 'health') return next();
+        if (req.params.id === 'api' || req.params.id === 'health' || req.params.id === 'mocks') return next();
         const record = getRequestById(req.params.id);
         if (!record) { res.status(404).type('html').send('<h1>Not found</h1>'); return; }
         res.type('html').send(renderDetail(record));
@@ -942,5 +1477,8 @@ export function startInspector(port: number, targetPort: number): void {
 
     app.listen(port, () => {
         console.log(`Inspector: http://localhost:${port}`);
+        if (mockEnabled) {
+            console.log(`Mock Manager: http://localhost:${port}/mocks`);
+        }
     });
 }
