@@ -25,6 +25,14 @@
   ],
   "author": "",
   "license": "MIT",
+  "homepage": "https://proxyhub.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cube-root/proxyhub.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cube-root/proxyhub/issues"
+  },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.8",
     "@types/express": "^4.17.21",
