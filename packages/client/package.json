@@ -1,6 +1,6 @@
 {
   "name": "proxyhub",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "ProxyHub CLI - Test your APIs with ease",
   "type": "module",
   "main": "dist/index.js",
@@ -47,11 +47,12 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
+    "@clack/prompts": "^1.2.0",
     "better-sqlite3": "^11.0.0",
-    "express": "^4.18.2",
-    "socket.io-client": "^4.8.1",
-    "commander": "^12.0.0",
     "chalk": "^5.3.0",
-    "dotenv": "^16.4.5"
+    "commander": "^12.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "socket.io-client": "^4.8.1"
   }
 }

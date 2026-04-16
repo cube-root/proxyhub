@@ -53,6 +53,16 @@ proxyhub -p 3000
 proxyhub -p 3000 --debug
 ```
 
+### Interactive Setup
+
+Not sure which flags you need? Run the wizard — it walks you through every option and starts ProxyHub with the choices you pick:
+
+```bash
+proxyhub init
+```
+
+The wizard prompts for mode (proxy / proxy + inspector / hybrid / pure mock), port, inspector port, token, auth key, and debug, then prints the equivalent CLI command before launching.
+
 ### Request Inspector
 
 Enable the built-in inspector to monitor all proxied requests and responses through a local web UI:
@@ -133,6 +143,12 @@ curl -H "X-Proxy-Token: mysecrettoken" https://your-tunnel.proxyhub.cloud/
 | `-h, --help` | Display help |
 
 Either `--port` or `--mock` is required. Using `--inspect` automatically enables mock mode.
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `init` | Interactive wizard that prompts for every option and launches ProxyHub with your choices |
 
 ## Self-Hosting
 
