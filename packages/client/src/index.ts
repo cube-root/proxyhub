@@ -8,6 +8,7 @@ import chalk from 'chalk';
 import { portNumberCustomValidationForCommander } from './utils/index.js';
 import socketHandler from './lib/socket.js';
 import { startInspector } from './lib/inspector.js';
+import { initDb } from './lib/db.js';
 import { runWizard } from './lib/init.js';
 import 'dotenv/config';
 
@@ -20,11 +21,26 @@ const { version } = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
 function run(options: ClientInitializationOptions, authKey?: string): void {
     if (authKey) process.env.PROXYHUB_AUTH_KEY = authKey;
 
+    // Standalone inspector: just the UI against the local SQLite DB, no tunnel.
+    if (options.inspectorOnly) {
+        const inspectPort = options.inspectPort || 3001;
+        console.log('\nStarting ProxyHub Inspector...');
+        console.log('Mode:', chalk.magenta('standalone inspector (no tunnel)'));
+        if (options.debug) {
+            console.log('Debug mode:', chalk.green('enabled'));
+        }
+        console.log('');
+        initDb();
+        startInspector(inspectPort, undefined, { mock: false });
+        return;
+    }
+
     // Validate: need either port or mock mode
     if (!options.port && !options.mock) {
-        console.error(chalk.red('Error: Either --port or --mock is required.'));
+        console.error(chalk.red('Error: --port, --mock, or --inspector-only is required.'));
         console.error(chalk.gray('  Use --port <port> to proxy to a local server'));
         console.error(chalk.gray('  Use --mock for pure mock mode (no local server needed)'));
+        console.error(chalk.gray('  Use --inspector-only to browse logged requests without a tunnel'));
         process.exit(1);
     }
 
@@ -77,6 +93,7 @@ program
     .option('-i, --inspect', 'Enable request inspector', false)
     .option('-m, --mock', 'Enable mock mode', false)
     .option('--inspect-port <port>', 'Port for inspector UI', parseInt)
+    .option('--inspector-only', 'Run only the inspector UI against logged requests (no tunnel)', false)
     .option('-k, --auth-key <key>', 'Authentication key for the ProxyHub server')
     .action(() => {
         const parsedOpts = program.opts() as ClientInitializationOptions & { port?: number; authKey?: string };
@@ -87,6 +104,7 @@ program
             inspect: parsedOpts.inspect,
             inspectPort: parsedOpts.inspectPort,
             mock: parsedOpts.mock,
+            inspectorOnly: parsedOpts.inspectorOnly,
         };
         run(options, parsedOpts.authKey);
     });

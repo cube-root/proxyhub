@@ -6,6 +6,7 @@ declare global {
         inspect?: boolean;
         inspectPort?: number;
         mock?: boolean;
+        inspectorOnly?: boolean;
     }
 
     interface TunnelRequestArgument {
