@@ -23,6 +23,7 @@ function validatePort(v: string | undefined, fallback: number): string | undefin
 
 function buildCommandPreview(opts: ClientInitializationOptions, authKey: string | undefined, userPickedMock: boolean, userPickedInspect: boolean): string {
     const parts: string[] = ['proxyhub'];
+    if (opts.inspectorOnly) parts.push('--inspector-only');
     if (opts.port) parts.push(`-p ${opts.port}`);
     if (userPickedMock) parts.push('--mock');
     if (userPickedInspect) parts.push('--inspect');
@@ -43,8 +44,36 @@ export async function runWizard(): Promise<WizardResult> {
             { value: 'inspect', label: 'Proxy + request inspector', hint: 'tunnel + UI at /__inspect' },
             { value: 'hybrid', label: 'Proxy + mocks (hybrid)', hint: 'mock some paths, proxy the rest' },
             { value: 'mock', label: 'Pure mock mode', hint: 'no local server required' },
+            { value: 'inspector-only', label: 'Inspector only (no tunnel)', hint: 'browse logged requests locally' },
         ],
-    })) as 'proxy' | 'inspect' | 'hybrid' | 'mock';
+    })) as 'proxy' | 'inspect' | 'hybrid' | 'mock' | 'inspector-only';
+
+    if (mode === 'inspector-only') {
+        const defaultIp = 3001;
+        const ipStr = bail(await text({
+            message: 'Inspector port',
+            placeholder: String(defaultIp),
+            defaultValue: String(defaultIp),
+            validate: (v) => validatePort(v, defaultIp),
+        })) as string;
+        const picked = parseInt(ipStr || String(defaultIp), 10);
+
+        const debug = bail(await confirm({
+            message: 'Enable debug mode?',
+            initialValue: false,
+        })) as boolean;
+
+        const options: ClientInitializationOptions = {
+            inspectorOnly: true,
+            inspectPort: picked !== defaultIp ? picked : undefined,
+            debug,
+        };
+
+        note(buildCommandPreview(options, undefined, false, false), 'Equivalent command');
+        outro(chalk.green('Starting ProxyHub Inspector...'));
+
+        return { options };
+    }
 
     const needsPort = mode !== 'mock';
     let port: number | undefined;
