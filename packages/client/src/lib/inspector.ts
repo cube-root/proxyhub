@@ -102,6 +102,9 @@ function pageHead(title: string): string {
   })();
 </script>
 <style>
+  :root { color-scheme: light dark; }
+  [data-theme="light"] { color-scheme: light; }
+  [data-theme="dark"] { color-scheme: dark; }
   *, *::before, *::after { box-sizing: border-box; }
   body { font-family: 'Inter', var(--font-sans, system-ui, sans-serif); padding: var(--space-4); min-height: 100vh; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; }
   .container { flex: 1; max-width: 1200px; margin: 0 auto; width: 100%; }
