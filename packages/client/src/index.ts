@@ -95,7 +95,12 @@ program
     .option('--inspect-port <port>', 'Port for inspector UI', parseInt)
     .option('--inspector-only', 'Run only the inspector UI against logged requests (no tunnel)', false)
     .option('-k, --auth-key <key>', 'Authentication key for the ProxyHub server')
-    .action(() => {
+    .action(async () => {
+        if (process.argv.length <= 2) {
+            const { options, authKey } = await runWizard();
+            run(options, authKey);
+            return;
+        }
         const parsedOpts = program.opts() as ClientInitializationOptions & { port?: number; authKey?: string };
         const options: ClientInitializationOptions = {
             port: parsedOpts.port,

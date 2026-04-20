@@ -37,6 +37,15 @@ proxyhub -p <port>
 proxyhub -p 3000
 ```
 
+### Interactive Setup
+
+Running `proxyhub` with no arguments launches an interactive wizard (same as `proxyhub init`). It prompts for mode, port, inspector port, token, auth key, and debug, prints the equivalent CLI command, then starts. Pass any flag to skip the wizard.
+
+```bash
+proxyhub          # wizard
+proxyhub init     # wizard (explicit)
+```
+
 ### Request Inspector
 
 Enable the built-in inspector to monitor all proxied requests and responses through a local web UI:
@@ -98,6 +107,17 @@ Requests must then include the `X-Proxy-Token` header:
 curl -H "X-Proxy-Token: mysecrettoken" https://your-tunnel.proxyhub.cloud/
 ```
 
+### Inspector Only (no tunnel)
+
+Browse previously logged requests and manage mocks locally without opening a tunnel:
+
+```bash
+proxyhub --inspector-only
+
+# Custom inspector port (default 3001)
+proxyhub --inspector-only --inspect-port 9000
+```
+
 ### Debug Mode
 
 ```bash
@@ -112,13 +132,14 @@ proxyhub -p 3000 --debug
 | `-m, --mock` | Enable mock mode |
 | `-t, --token <token>` | Token for tunnel protection |
 | `-i, --inspect` | Enable request inspector UI |
-| `--inspect-port <port>` | Port for inspector UI (default: port + 1000) |
+| `--inspect-port <port>` | Port for inspector UI (default: port + 1000, or 3001 in inspector-only mode) |
+| `--inspector-only` | Run only the inspector UI against logged requests (no tunnel) |
 | `-k, --auth-key <key>` | Authentication key for the ProxyHub server |
 | `-d, --debug` | Enable debug mode |
 | `-V, --version` | Output version number |
 | `-h, --help` | Display help |
 
-Either `--port` or `--mock` is required. Using `--inspect` automatically enables mock mode.
+One of `--port`, `--mock`, or `--inspector-only` is required. Using `--inspect` automatically enables mock mode. Running `proxyhub` with no arguments starts the interactive wizard.
 
 ## Self-Hosted Server
 
