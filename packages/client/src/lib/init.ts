@@ -38,13 +38,13 @@ export async function runWizard(): Promise<WizardResult> {
     intro(chalk.bgMagenta.white(' ProxyHub Setup '));
 
     const mode = bail(await select({
-        message: 'What do you want to run?',
+        message: 'How do you want to use ProxyHub?',
         options: [
-            { value: 'proxy', label: 'Proxy a local server', hint: 'tunnel traffic to localhost' },
-            { value: 'inspect', label: 'Proxy + request inspector', hint: 'tunnel + UI at /__inspect' },
-            { value: 'hybrid', label: 'Proxy + mocks (hybrid)', hint: 'mock some paths, proxy the rest' },
-            { value: 'mock', label: 'Pure mock mode', hint: 'no local server required' },
-            { value: 'inspector-only', label: 'Inspector only (no tunnel)', hint: 'browse logged requests locally' },
+            { value: 'proxy', label: 'Share my local server with a public URL', hint: 'tunnel only — great for webhooks and demos' },
+            { value: 'inspect', label: 'Share my local server + API testing tool', hint: 'tunnel + UI to view live traffic, build, send, and replay requests' },
+            { value: 'hybrid', label: 'Share my local server, but fake some endpoints', hint: 'mock specific paths, proxy everything else' },
+            { value: 'mock', label: 'Fake an API without running any server', hint: 'define all responses in the mock UI' },
+            { value: 'inspector-only', label: 'Just the API testing tool — no tunnel', hint: 'browse past requests, build and send new ones, edit mocks locally' },
         ],
     })) as 'proxy' | 'inspect' | 'hybrid' | 'mock' | 'inspector-only';
 

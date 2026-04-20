@@ -604,12 +604,14 @@ function resendReq(){
 ${PAGE_FOOT}`;
 }
 
-function renderCompose(targetPort: number, prefill?: RequestLogRecord): string {
+function renderCompose(targetPort: number | undefined, prefill?: RequestLogRecord): string {
     const pfMethod = prefill ? prefill.method.toUpperCase() : '';
     const pfHeaders = prefill ? tryParseJson(prefill.headers) : null;
     const pfBody = prefill?.body || '';
-    // Build the full URL — prefer tunnel URL (forwarding URL), fall back to localhost
-    const baseUrl = tunnelUrl || `http://localhost:${targetPort}`;
+    // Build the full URL — prefer tunnel URL, fall back to localhost when a target port exists.
+    // In inspector-only mode (no tunnel, no target), leave the field empty so the user can type any URL.
+    const baseUrl = tunnelUrl || (targetPort ? `http://localhost:${targetPort}` : '');
+    const urlPlaceholder = baseUrl || 'https://api.example.com/endpoint';
     const pfUrl = prefill ? `${baseUrl}${prefill.path}` : baseUrl;
 
     // Build prefill header rows HTML
@@ -662,7 +664,7 @@ function renderCompose(targetPort: number, prefill?: RequestLogRecord): string {
         `<option value="${m}"${pfMethod === m ? ' selected' : ''}>${m}</option>`
     ).join('')}
         </select>
-        <input id="compose-url" type="text" placeholder="${escapeHtml(baseUrl)}" value="${escapeHtml(pfUrl)}" style="flex:1;min-width:200px">
+        <input id="compose-url" type="text" placeholder="${escapeHtml(urlPlaceholder)}" value="${escapeHtml(pfUrl)}" style="flex:1;min-width:200px">
         <button onclick="sendRequest()" id="compose-send" title="Ctrl+Enter to send">&#9889; Send</button>
     </div>
 
@@ -1177,7 +1179,7 @@ export function startInspector(port: number, targetPort: number | undefined, opt
     app.get('/compose', (req, res) => {
         const fromId = req.query.from as string | undefined;
         const prefill = fromId ? getRequestById(fromId) : undefined;
-        res.type('html').send(renderCompose(targetPort || 0, prefill));
+        res.type('html').send(renderCompose(targetPort, prefill));
     });
 
     // Resend a request
@@ -1269,13 +1271,16 @@ export function startInspector(port: number, targetPort: number | undefined, opt
             return;
         }
 
-        // Parse the URL — accept full URLs or paths (default to localhost:targetPort)
+        // Parse the URL — accept full URLs, or relative paths when a target port is configured.
         let parsedUrl: URL;
         try {
             if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
                 parsedUrl = new URL(rawUrl);
-            } else {
+            } else if (targetPort) {
                 parsedUrl = new URL(rawUrl, `http://localhost:${targetPort}`);
+            } else {
+                res.status(400).json({ error: 'No local server is configured — enter an absolute URL (e.g. https://api.example.com/...).' });
+                return;
             }
         } catch {
             res.status(400).json({ error: 'Invalid URL' });

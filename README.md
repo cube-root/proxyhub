@@ -55,13 +55,17 @@ proxyhub -p 3000 --debug
 
 ### Interactive Setup
 
-Not sure which flags you need? Run the wizard — it walks you through every option and starts ProxyHub with the choices you pick:
+Running `proxyhub` with no arguments launches an interactive wizard — the same one you get from `proxyhub init`:
 
 ```bash
+# No args → wizard
+proxyhub
+
+# Explicit
 proxyhub init
 ```
 
-The wizard prompts for mode (proxy / proxy + inspector / hybrid / pure mock), port, inspector port, token, auth key, and debug, then prints the equivalent CLI command before launching.
+The wizard prompts for mode (proxy / proxy + inspector / hybrid / pure mock / inspector-only), port, inspector port, token, auth key, and debug, then prints the equivalent CLI command before launching. Pass any flag (e.g. `-p 3000`) to skip the wizard and run directly.
 
 ### Request Inspector
 
@@ -128,6 +132,17 @@ When token protection is enabled, requests must include the `X-Proxy-Token` head
 curl -H "X-Proxy-Token: mysecrettoken" https://your-tunnel.proxyhub.cloud/
 ```
 
+### Inspector Only (no tunnel)
+
+Browse previously logged requests and manage mocks locally without opening a tunnel:
+
+```bash
+proxyhub --inspector-only
+
+# Custom inspector port (default 3001)
+proxyhub --inspector-only --inspect-port 9000
+```
+
 ### CLI Options
 
 | Option | Description |
@@ -136,13 +151,14 @@ curl -H "X-Proxy-Token: mysecrettoken" https://your-tunnel.proxyhub.cloud/
 | `-m, --mock` | Enable mock mode |
 | `-t, --token <token>` | Token for tunnel protection |
 | `-i, --inspect` | Enable request inspector UI |
-| `--inspect-port <port>` | Port for inspector UI (default: port + 1000) |
+| `--inspect-port <port>` | Port for inspector UI (default: port + 1000, or 3001 in inspector-only mode) |
+| `--inspector-only` | Run only the inspector UI against logged requests (no tunnel) |
 | `-k, --auth-key <key>` | Authentication key for the ProxyHub server |
 | `-d, --debug` | Enable debug mode |
 | `-V, --version` | Output version number |
 | `-h, --help` | Display help |
 
-Either `--port` or `--mock` is required. Using `--inspect` automatically enables mock mode.
+One of `--port`, `--mock`, or `--inspector-only` is required. Using `--inspect` automatically enables mock mode. Running `proxyhub` with no arguments starts the interactive wizard.
 
 ### Commands
 
